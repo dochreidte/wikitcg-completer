@@ -7,6 +7,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .auth import is_real_session
+
 
 # ---- valeurs par défaut (utilisées si une clé manque dans le TOML) ----
 _DEFAULTS: dict = {
@@ -109,8 +111,7 @@ class Settings:
 
     @property
     def has_session(self) -> bool:
-        c = self.api.get("session_cookie", "")
-        return bool(c) and "PASTE_YOUR" not in c
+        return is_real_session(self.api.get("session_cookie", ""))
 
 
 def load_settings(path: str | os.PathLike | None = None) -> Settings:

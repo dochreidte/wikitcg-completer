@@ -111,7 +111,7 @@ class ActionsMixin:
         """
         # Quota JOURNALIER de recyclage atteint récemment (429) -> on suspend : inutile
         # d'appeler /duplicates ni /recycle, tout renverrait 429. L'ouverture continue.
-        quota_until = getattr(self, "_recycle_quota_until", 0.0)
+        quota_until = self._recycle_quota_until
         if quota_until > time.time():
             log.debug("Recyclage en pause (quota journalier) — reprise dans ~%d min.",
                       int((quota_until - time.time()) / 60) + 1)
@@ -131,7 +131,6 @@ class ActionsMixin:
         values = self.settings.recycle.get("values", {})
         now = time.time()
         mkt_on = bool(self.settings.marketplace.get("enabled"))
-        tradeable = {"UC", "R", "SR", "SSR", "UR", "LR"}
         skip_rarities = set(self.settings.engine.get("recycle_skip_rarities", []))
         # Réserve : "fixed" = keep_spares par carte (+plancher marketplace) ; "missing" = garder,
         # PAR RARETÉ, autant de doublons qu'il manque de cartes de cette rareté (matière d'échange
@@ -154,7 +153,7 @@ class ActionsMixin:
                 surplus = copies - 1                       # tous les extras ; réserve appliquée par rareté
             else:
                 reserve = keep.get(rarity, 0)
-                if mkt_on and rarity in tradeable:
+                if mkt_on and rarity in strategy.TRADEABLE_RARITIES:
                     reserve = max(reserve, 1)
                 surplus = copies - 1 - reserve
             if surplus <= 0:

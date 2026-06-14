@@ -21,6 +21,8 @@ import threading
 import time
 from typing import Any
 
+from . import strategy
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS series (
     series_id     TEXT PRIMARY KEY,
@@ -134,6 +136,12 @@ class Database:
         with self._lock:
             return self._conn.execute(sql, params).fetchall()
 
+    def _scalar(self, sql: str, params: tuple = (), default: Any = 0) -> Any:
+        """Première colonne de la première ligne d'une requête d'agrégat (COUNT/SUM…).
+        Un agrégat renvoie toujours une ligne ; `default` ne sert qu'aux requêtes vides."""
+        rows = self._query(sql, params)
+        return rows[0][0] if rows else default
+
     # ---------- catalogue & séries ----------
     def upsert_series(self, sid: str, name: str, primary: str, accent: str, set_size: int) -> None:
         self._exec(
@@ -163,8 +171,7 @@ class Database:
             self._conn.commit()
 
     def catalog_size(self, sid: str) -> int:
-        rows = self._query("SELECT COUNT(*) AS n FROM catalog WHERE series_id=?", (sid,))
-        return rows[0]["n"] if rows else 0
+        return self._scalar("SELECT COUNT(*) FROM catalog WHERE series_id=?", (sid,))
 
     def known_series_ids(self) -> list[str]:
         return [r["series_id"] for r in self._query("SELECT series_id FROM series")]
@@ -204,8 +211,7 @@ class Database:
             return is_new
 
     def owned_count(self, sid: str) -> int:
-        rows = self._query("SELECT COUNT(*) AS n FROM inventory WHERE series_id=?", (sid,))
-        return rows[0]["n"] if rows else 0
+        return self._scalar("SELECT COUNT(*) FROM inventory WHERE series_id=?", (sid,))
 
     def duplicates(self, sid: str) -> list[sqlite3.Row]:
         """Cartes de la série avec quantity > 1."""
@@ -226,6 +232,26 @@ class Database:
         return [{"card_id": r["card_id"], "rarity": r["rarity"],
                  "title": r["title"], "card_number": r["card_number"]} for r in rows]
 
+    def missing_card_ids(self) -> set[str]:
+        """Tous les card_id du catalogue absents de l'inventaire, toutes séries — une requête
+        (évite un appel à missing_cards par série)."""
+        return {r["card_id"] for r in self._query(
+            "SELECT c.card_id FROM catalog c "
+            "LEFT JOIN inventory i ON i.series_id=c.series_id AND i.card_id=c.card_id "
+            "WHERE i.card_id IS NULL")}
+
+    def missing_cards_grouped(self) -> dict[str, list[dict]]:
+        """Cartes manquantes regroupées par série, toutes séries en une seule requête."""
+        out: dict[str, list[dict]] = {}
+        for r in self._query(
+                "SELECT c.series_id, c.card_id, c.rarity, c.title, c.card_number FROM catalog c "
+                "LEFT JOIN inventory i ON i.series_id=c.series_id AND i.card_id=c.card_id "
+                "WHERE i.card_id IS NULL"):
+            out.setdefault(r["series_id"], []).append(
+                {"card_id": r["card_id"], "rarity": r["rarity"],
+                 "title": r["title"], "card_number": r["card_number"]})
+        return out
+
     def missing_by_rarity(self) -> dict[str, int]:
         """Nombre de cartes MANQUANTES par rareté, toutes séries confondues (catalogue - inventaire).
         Sert au recyclage « réserve = nb de manquantes par rareté »."""
@@ -244,9 +270,8 @@ class Database:
             "WHERE i.series_id=? GROUP BY i.rarity", (sid,))
         totals = {r["rarity"]: r["n"] for r in cat}
         owned = {r["rarity"]: r["n"] for r in own}
-        order = ["LR", "UR", "SSR", "SR", "R", "UC", "C"]
         return [{"rarity": r, "owned": owned.get(r, 0), "total": totals.get(r, 0)}
-                for r in order if totals.get(r, 0)]
+                for r in strategy.RARITY_ORDER_DESC if totals.get(r, 0)]
 
     def all_duplicates(self) -> list[dict]:
         """Toutes mes cartes en plusieurs exemplaires (toutes séries)."""
@@ -297,7 +322,7 @@ class Database:
         self._exec("DELETE FROM recycle_failures WHERE pull_id=?", (pull_id,))
 
     def recycle_failures_summary(self) -> dict:
-        total = self._query("SELECT COUNT(*) n FROM recycle_failures")[0]["n"]
+        total = self._scalar("SELECT COUNT(*) FROM recycle_failures")
         by = [{"rarity": r["rarity"], "count": r["n"]} for r in self._query(
             "SELECT rarity, COUNT(*) n FROM recycle_failures GROUP BY rarity")]
         nxt = self._query("SELECT MIN(retry_at) m FROM recycle_failures")
@@ -400,3 +425,16 @@ class Database:
 
     def set_kv(self, key: str, value: str) -> None:
         self._exec("INSERT OR REPLACE INTO kv(key,value) VALUES(?,?)", (key, value))
+
+    def get_json(self, key: str, default: Any = None) -> Any:
+        """Lit une valeur JSON du kv ; renvoie `default` si absente ou illisible."""
+        raw = self.get_kv(key)
+        if not raw:
+            return default
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return default
+
+    def set_json(self, key: str, value: Any) -> None:
+        self.set_kv(key, json.dumps(value))

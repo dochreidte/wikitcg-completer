@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -12,6 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from . import strategy
 from .api_client import WikiTCGClient, AuthError
 from .auth import token_status
 from .config import load_settings, _deep_merge
@@ -64,18 +64,8 @@ def _editable_view(settings) -> dict:
 
 def _overridden_keys(db) -> list:
     """Noms des réglages actuellement forcés par l'UI (présents dans settings_overrides)."""
-    raw = db.get_kv("settings_overrides")
-    if not raw:
-        return []
-    try:
-        ov = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    keys: list = []
-    for section in (ov or {}).values():
-        if isinstance(section, dict):
-            keys += list(section.keys())
-    return keys
+    ov = db.get_json("settings_overrides", {}) or {}
+    return [k for sec in ov.values() if isinstance(sec, dict) for k in sec]
 
 
 @asynccontextmanager
@@ -83,22 +73,16 @@ async def lifespan(app: FastAPI):
     settings = load_settings()
     db = Database(settings.paths["database"])
     # Niveau de log ajusté depuis l'UI (persisté) : appliqué avant la config des logs.
-    log_over = db.get_kv("logging_override")
-    if log_over:
-        try:
-            settings.raw["logging"].update(json.loads(log_over))
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            pass
+    log_over = db.get_json("logging_override")
+    if isinstance(log_over, dict):
+        settings.raw["logging"].update(log_over)
     setup_logging(settings.paths["log_file"], settings.logging.get("level", "INFO"),
                   log_requests=bool(settings.logging.get("log_requests", False)))
     log = logging.getLogger("wikitcg")
     # Réglages ajustés en direct depuis l'UI (persistés en base) : ils priment sur le TOML.
-    raw_over = db.get_kv("settings_overrides")
-    if raw_over:
-        try:
-            settings.raw = _deep_merge(settings.raw, json.loads(raw_over))
-        except (json.JSONDecodeError, TypeError):
-            log.warning("settings_overrides illisible — ignoré.")
+    over = db.get_json("settings_overrides")
+    if isinstance(over, dict):
+        settings.raw = _deep_merge(settings.raw, over)
     # Cookie de session mis à jour depuis l'UI (persisté) : prime sur le TOML.
     cookie_over = db.get_kv("session_cookie_override")
     if cookie_over:
@@ -140,27 +124,34 @@ async def index() -> str:
     return FRONTEND.read_text(encoding="utf-8")
 
 
-@app.get("/api/state")
-async def get_state() -> JSONResponse:
-    engine: Engine = state["engine"]
-    db: Database = state["db"]
-    settings = state["settings"]
-    return JSONResponse({
+def _live_payload(engine, db, settings) -> dict:
+    """Champs partagés par /api/state et /api/live (statut, ressources, séries, config, session)."""
+    return {
         "status": engine.status,
         "running": engine.running,
         "has_session": settings.has_session,
         "recycle_enabled": bool(settings.recycle.get("duplicates_endpoint")),
         "resources": engine.resources,
         "series": db.progress_view(),
-        "actions": db.recent_actions(80),
-        "empirical_rates": db.empirical_pull_rates(),
-        "recycle_values": db.empirical_recycle_values(),
         "config": _editable_view(settings),
         "config_overridden": _overridden_keys(db),
         "logging": dict(settings.logging),
-        "full_restock_ink": settings.packs.get("full_restock_ink", 400),
         "token": token_status(state["client"].session_cookie),
         "auth_error": engine.auth_error,
+    }
+
+
+@app.get("/api/state")
+async def get_state() -> JSONResponse:
+    engine: Engine = state["engine"]
+    db: Database = state["db"]
+    settings = state["settings"]
+    return JSONResponse({
+        **_live_payload(engine, db, settings),
+        "actions": db.recent_actions(80),
+        "empirical_rates": db.empirical_pull_rates(),
+        "recycle_values": db.empirical_recycle_values(),
+        "full_restock_ink": settings.packs.get("full_restock_ink", 400),
     })
 
 
@@ -187,19 +178,7 @@ async def get_live() -> JSONResponse:
             finally:
                 _live_sync["at"] = time.monotonic()
                 _live_sync["busy"] = False
-    return JSONResponse({
-        "status": engine.status,
-        "running": engine.running,
-        "has_session": settings.has_session,
-        "recycle_enabled": bool(settings.recycle.get("duplicates_endpoint")),
-        "resources": engine.resources,
-        "series": db.progress_view(),
-        "config": _editable_view(settings),
-        "config_overridden": _overridden_keys(db),
-        "logging": dict(settings.logging),
-        "token": token_status(state["client"].session_cookie),
-        "auth_error": engine.auth_error,
-    })
+    return JSONResponse(_live_payload(engine, db, settings))
 
 
 @app.post("/api/logging")
@@ -214,7 +193,7 @@ async def set_logging(payload: dict) -> JSONResponse:
     settings.raw["logging"]["level"] = lvl
     settings.raw["logging"]["log_requests"] = reqs
     setup_logging(settings.paths["log_file"], lvl, log_requests=reqs)
-    db.set_kv("logging_override", json.dumps({"level": lvl, "log_requests": reqs}))
+    db.set_json("logging_override", {"level": lvl, "log_requests": reqs})
     state["bus"].publish({"kind": "logging", **settings.logging})
     return JSONResponse({"ok": True, "logging": dict(settings.logging)})
 
@@ -242,17 +221,13 @@ async def set_config(payload: dict) -> JSONResponse:
         except (TypeError, ValueError):
             continue
     # Ne persiste QUE les clés réellement modifiées (le TOML reste la source pour le reste).
-    existing: dict = {}
-    raw = db.get_kv("settings_overrides")
-    if raw:
-        try:
-            existing = json.loads(raw)
-        except json.JSONDecodeError:
-            existing = {}
+    existing = db.get_json("settings_overrides", {})
+    if not isinstance(existing, dict):
+        existing = {}
     for name in applied:
         section = EDITABLE[name][0]
         existing.setdefault(section, {})[name] = settings.raw[section][name]
-    db.set_kv("settings_overrides", json.dumps(existing))
+    db.set_json("settings_overrides", existing)
     state["bus"].publish({"kind": "config", **_editable_view(settings)})
     return JSONResponse({"ok": True, "applied": applied, "config": _editable_view(settings)})
 
@@ -344,8 +319,8 @@ async def series_detail(sid: str) -> JSONResponse:
     prog = next((p for p in db.progress_view() if p["series_id"] == sid), None)
     rarity = db.rarity_breakdown(sid)
     missing = db.missing_cards(sid)
-    rank = {"LR": 0, "UR": 1, "SSR": 2, "SR": 3, "R": 4, "UC": 5, "C": 6}
-    missing.sort(key=lambda m: (rank.get(m["rarity"], 9), m.get("card_number") or 0))
+    # Du plus rare au plus commun (rang décroissant), puis par numéro de carte ; inconnues en dernier.
+    missing.sort(key=lambda m: (-strategy.RARITY_RANK.get(m["rarity"], -1), m.get("card_number") or 0))
     return JSONResponse({
         "series": prog,
         "rarity": rarity,

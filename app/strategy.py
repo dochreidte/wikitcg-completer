@@ -13,6 +13,8 @@ from __future__ import annotations
 # Rareté croissante (du plus commun au plus rare), déduite des sets (C80/UC50/R30/SR20/SSR10/UR7/LR3)
 RARITY_ORDER = ["C", "UC", "R", "SR", "SSR", "UR", "LR"]
 RARITY_RANK = {r: i for i, r in enumerate(RARITY_ORDER)}
+# Du plus rare au plus commun (affichage UI / breakdown par rareté).
+RARITY_ORDER_DESC = list(reversed(RARITY_ORDER))
 
 # Table d'échange — sémantique « je DONNE (offered) -> je REÇOIS (wanted) ».
 # Pour chaque rareté offerte, raretés que l'on peut demander (égale ou descendante) :
@@ -25,6 +27,9 @@ TRADE_GIVE_TO_GET = {
     "UC": {"UC", "C"},
     # "C" : ne peut PAS être offert (les commons sont reçus, ou recyclés).
 }
+
+# Raretés qui peuvent être OFFERTES en échange = clés de la table ci-dessus (toutes sauf C).
+TRADEABLE_RARITIES = set(TRADE_GIVE_TO_GET)
 
 
 def offer_rarities_for_target(target_rarity: str) -> list[str]:

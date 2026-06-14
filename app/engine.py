@@ -26,6 +26,9 @@ from . import strategy
 
 log = logging.getLogger("wikitcg.engine")
 
+# Niveau d'événement (_emit) -> méthode du logger ; défaut INFO.
+_LOG_FN = {"warn": log.warning, "error": log.error}
+
 
 def _prettify(series_id: str) -> str:
     return series_id.replace("-", " ").replace("_", " ").title()
@@ -82,8 +85,7 @@ class Engine(ActionsMixin, MarketMixin):
                                 detail=detail, ink_delta=ink_delta)
         ev["kind"] = "action"
         self.bus.publish(ev)
-        getattr(log, "warning" if level == "warn" else ("error" if level == "error" else "info"))(
-            "%s%s", message, f" [{series_id}]" if series_id else "")
+        _LOG_FN.get(level, log.info)("%s%s", message, f" [{series_id}]" if series_id else "")
 
     def _set_status(self, status: str) -> None:
         self.status = status
@@ -251,7 +253,7 @@ class Engine(ActionsMixin, MarketMixin):
             self._set_status("error")
         finally:
             self.running = False
-            if self.status not in ("error",):
+            if self.status != "error":
                 self._set_status("stopped")
 
     @staticmethod
@@ -419,6 +421,10 @@ class Engine(ActionsMixin, MarketMixin):
         rétablie dès qu'une action a lieu."""
         base = float(self.settings.engine.get("marketplace_interval", 45.0))
         cap = float(self.settings.engine.get("marketplace_interval_max", 900.0))
+
+        def grow() -> float:   # espace la prochaine passe (backoff croissant plafonné)
+            return min((self._mkt_backoff or base) * 2, cap)
+
         while self.running:
             await asyncio.sleep(self._mkt_backoff or base)
             if not self.running:
@@ -445,13 +451,13 @@ class Engine(ActionsMixin, MarketMixin):
                 raise
             except ApiError as exc:
                 self._emit("listing", f"Erreur (marketplace) : {exc}", level="warn")
-                self._mkt_backoff = min((self._mkt_backoff or base) * 2, cap)
+                self._mkt_backoff = grow()
                 continue
             except Exception:
                 log.exception("Erreur dans _marketplace_loop")
                 continue
             # action -> cadence rapide ; rien -> on espace (jusqu'au plafond)
-            self._mkt_backoff = 0.0 if acted else min((self._mkt_backoff or base) * 2, cap)
+            self._mkt_backoff = 0.0 if acted else grow()
 
     async def _status_loop(self) -> None:
         """Re-sync LÉGER et fréquent du statut (encre / packs réels / régén) — pour toujours

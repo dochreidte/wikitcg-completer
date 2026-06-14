@@ -10,7 +10,6 @@ Mode `dry_run` : journalise ce qui SERAIT fait, sans aucune écriture.
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 
@@ -37,7 +36,7 @@ class MarketMixin:
         # 0a) Annonces HONORÉES : j'ai reçu la carte voulue. On la crédite à l'inventaire (une
         #     seule fois, suivi persistant) pour NE PAS recréer l'offre ensuite (bug « recrée une
         #     annonce déjà honorée »). On décrémente aussi l'exemplaire offert (donné).
-        seen = set(json.loads(self.db.get_kv("fulfilled_seen", "[]") or "[]"))
+        seen = set(self.db.get_json("fulfilled_seen", []) or [])
         changed = False
         for l in listings:
             if (l.get("status") == "fulfilled" or l.get("fulfilled_by")) and l["id"] not in seen:
@@ -50,7 +49,7 @@ class MarketMixin:
                            detail=l)
                 seen.add(l["id"]); changed = True
         if changed:
-            self.db.set_kv("fulfilled_seen", json.dumps(list(seen)[-1000:]))  # borne la taille
+            self.db.set_json("fulfilled_seen", list(seen)[-1000:])  # borne la taille
 
         active = [l for l in listings if l.get("status") == "active"]
 
@@ -100,7 +99,8 @@ class MarketMixin:
             progress = self.db.progress_view()
             # Focalisation : ne cibler QUE les séries proches de la fin (≤ N cartes manquantes).
             near = int(cfg.get("near_completion_max_missing", 0))
-            missing_by_series = {p["series_id"]: self.db.missing_cards(p["series_id"])
+            all_missing = self.db.missing_cards_grouped()   # une requête au lieu d'une par série
+            missing_by_series = {p["series_id"]: all_missing.get(p["series_id"], [])
                                  for p in progress
                                  if p["missing"] > 0 and (near <= 0 or p["missing"] <= near)}
             dups = self.db.all_duplicates()
@@ -140,10 +140,7 @@ class MarketMixin:
         en double ET (b) je ne possède pas déjà la carte offerte (cf. marketplace.plan_fulfillments)."""
         browse = await self.client.marketplace_browse()
         listings = browse.get("listings") or []
-        my_missing: set[str] = set()
-        for p in self.db.progress_view():
-            if p["missing"] > 0:
-                my_missing.update(m["card_id"] for m in self.db.missing_cards(p["series_id"]))
+        my_missing = self.db.missing_card_ids()   # toutes les manquantes en une requête
         spare_by_type = {d["card_id"]: d["quantity"] - 1 for d in self.db.all_duplicates()}
         deals = marketplace.plan_fulfillments(listings, my_missing, spare_by_type,
                                               int(cfg.get("fulfill_per_pass", 3)))

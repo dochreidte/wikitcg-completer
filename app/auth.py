@@ -13,6 +13,15 @@ import base64
 import json
 import time
 
+# Valeur d'exemple présente dans config.example.toml / accounts.example.toml : un cookie
+# contenant ce marqueur n'est PAS un vrai jeton (l'utilisateur ne l'a pas encore renseigné).
+PLACEHOLDER = "PASTE_YOUR"
+
+
+def is_real_session(token: str) -> bool:
+    """True si `token` est un vrai cookie de session (présent et pas le placeholder d'exemple)."""
+    return bool(token) and PLACEHOLDER not in token
+
 
 def decode_jwt(token: str) -> dict:
     """Décode le payload d'un JWT sans vérifier la signature. {} si illisible."""
@@ -27,12 +36,11 @@ def decode_jwt(token: str) -> dict:
 def token_status(token: str) -> dict:
     """État synthétique du jeton pour l'UI."""
     token = token or ""
-    placeholder = (not token) or ("PASTE_YOUR" in token)
     claims = decode_jwt(token)
     exp = claims.get("exp")
     now = int(time.time())
     out: dict = {
-        "present": bool(token) and not placeholder,
+        "present": is_real_session(token),
         "email": claims.get("email"),
         "name": claims.get("name"),
         "exp": exp,

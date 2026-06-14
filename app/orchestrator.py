@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .api_client import WikiTCGClient
+from .auth import is_real_session
 from .config import Settings, _deep_merge, load_settings
 from .db import Database
 from .engine import Engine
@@ -77,7 +78,7 @@ def load_accounts(path: str = "accounts.toml") -> tuple[list[Account], dict]:
         name = str(raw.get("name") or f"compte{i}").strip()
         series = str(raw.get("series") or "").strip()
         session = str(raw.get("session_cookie") or "").strip()
-        if not series or not session or "PASTE_YOUR" in session:
+        if not series or not is_real_session(session):
             log.warning("Compte « %s » ignoré : series et session_cookie sont obligatoires.", name)
             continue
         # Noms en double (copier-coller fréquent) : on NE jette PAS — on désambiguïse pour que
