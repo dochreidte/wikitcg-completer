@@ -1,0 +1,24 @@
+# Secrets : config.toml contient le cookie de session (JWT) — NE PAS versionner.
+# Seul config.example.toml (sans secret) doit l'être.
+config.toml
+# Multi-comptes : accounts.toml contient les cookies de plusieurs comptes — NE PAS versionner.
+# Seul accounts.example.toml (sans secret) doit l'être.
+accounts.toml
+
+# Base de données & logs (peuvent contenir des données de session/historique)
+*.db
+*.db-journal
+*.log
+*.log.*
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS / éditeurs
+.DS_Store
+.idea/
+.vscode/

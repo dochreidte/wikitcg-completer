@@ -1,0 +1,158 @@
+# =====================================================================
+#  wikitcg-completer — configuration
+#  Copie ce fichier en  config.toml  et renseigne au minimum
+#  api.session_cookie.
+# =====================================================================
+
+[api]
+base_url = "https://wikitcg.net"
+# Valeur du cookie wtcg_session (le JWT lu dans ton navigateur).
+session_cookie = "PASTE_YOUR_wtcg_session_JWT_HERE"
+# Cookies SUPPLÉMENTAIRES éventuels, format en-tête : "nom1=val1; nom2=val2".
+# Utile si le site exige p. ex. un cookie Cloudflare cf_clearance.
+# ⚠️ cf_clearance est lié à ton User-Agent : garde le même UA que ton navigateur.
+extra_cookies = ""
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0"
+http2 = true
+
+[throttle]
+# Lectures (GET, synchro) : court délai -> la synchro reste rapide.
+read_interval = 0.4
+read_jitter = 0.6
+# Actions (POST : ouverture/recyclage/échange) : délai MINIMAL + jitter.
+min_interval = 2.0
+jitter = 2.5
+# Pause plus longue toutes les N ouvertures de boosters (anti-429 sur les rafales).
+cooldown_every = 8
+cooldown_seconds = 25.0
+cooldown_jitter = 15.0
+
+[retry]
+max_retries = 5
+backoff_base = 2.0      # délai = backoff_base ** tentative
+backoff_cap = 120.0     # plafond en secondes
+backoff_jitter = 0.5    # fraction de jitter aléatoire (0..1)
+
+[engine]
+auto_open = true
+auto_recycle = true
+# Charger le catalogue complet (cartes manquantes / marketplace). Mettre false pour une
+# synchro encore plus rapide si tu ne fais que ouvrir + recycler.
+fetch_catalog = true
+# Resync du /status toutes les N actions (suivi encre / packs gratuits / régen).
+resync_every = 5
+# Achat automatique d'un restock à l'encre quand les packs gratuits sont épuisés
+# (recyclage des doublons d'abord si l'encre manque). Modifiable aussi depuis l'UI.
+buy_packs_with_ink = true
+# Encre à conserver en réserve (ne descend pas en dessous en achetant des packs).
+min_ink_reserve = 0
+# Recyclage : "surplus" (vider le surplus, max d'encre) | "on_demand" (financer les restocks
+# au minimum, préserve les cartes rares pour l'échange).
+recycle_mode = "surplus"
+# Réserve de doublons : "fixed" = keep_spares (ci-dessous) | "missing" = garder autant de
+# doublons que de cartes MANQUANTES par rareté (15 LR en double, 3 manquantes → recycler 12).
+recycle_reserve_mode = "fixed"
+# Ordre de recyclage par rareté : "common_first" (préserve les cartes rares pour l'échange) |
+# "rare_first" (FARM PUR : recycle les plus rares d'abord → encre max sous le quota ~200/jour).
+recycle_priority = "common_first"
+# Pack "mystery" (premium) : l'ouvrir dès qu'il est dispo (~1×/6h). S'ouvre comme un pack normal.
+mystery_pack = true
+mystery_interval_hours = 6.0
+# Démarrer la boucle automatiquement au lancement du serveur.
+autostart = false
+# Re-sync léger encre/packs toutes les N s (connaître les vrais chiffres + détecter la régén).
+status_sync_seconds = 15.0
+# Cadences (s) des tâches recyclage / marketplace (DIFFÉRÉES tant qu'il reste des packs à ouvrir).
+recycle_interval = 30.0
+marketplace_interval = 45.0
+# Cadence GARANTIE de la marketplace (s) : force une passe même si des packs restent à ouvrir
+# (sinon, avec achat de packs à l'encre, l'ouverture ne s'arrête jamais et la marketplace est ignorée).
+marketplace_min_interval = 120.0
+# Carte qui renvoie 500 au recyclage : délai de base (minutes), croissant à chaque échec.
+recycle_retry_minutes = 30.0
+# Quota JOURNALIER de recyclage (~200/jour) : au 429, on met le recyclage en pause N min
+# (l'ouverture continue) puis on re-tente. Évite de marteler /api/cards/recycle en boucle.
+recycle_quota_cooldown_minutes = 60.0
+# Re-sync complet périodique (minutes) ; 0 = off. Utile si tu joues aussi dans le navigateur.
+full_resync_minutes = 0.0
+# Backoff marketplace quand rien à faire : plafond (s).
+marketplace_interval_max = 900.0
+# Packs épuisés : "wait" (attendre la régén) | "stop". L'attente se cale sur nextRegenAt ;
+# sinon backoff croissant plafonné par idle_poll_max.
+on_empty = "wait"
+idle_poll_seconds = 60.0
+idle_poll_max = 1800.0
+# Raretés à NE JAMAIS recycler (gardées intégralement). Ex. ["LR"] ou ["LR", "UR"].
+recycle_skip_rarities = []
+
+# Politique de recyclage : nombre de DOUBLONS conservés comme matière d'échange (phase 2).
+# Surplus recyclable d'une carte = quantity - 1 (l'exemplaire de collection) - keep_spares[rarity].
+# Les C ne sont jamais offerts en échange -> keep_spares C = 0 (tout le surplus est recyclé).
+[engine.keep_spares]
+C = 0
+UC = 1
+R = 1
+SR = 1
+SSR = 1
+UR = 2
+LR = 2
+
+[packs]
+# Achat de packs avec l'encre (phase 2). 400 encre = restock complet à 5 packs.
+full_restock_ink = 400
+max_free_packs = 5
+
+[marketplace]
+# Phase 2 — agit sur de VRAIS joueurs et engage tes cartes : opt-in.
+enabled = false
+# Garder en permanence ce nombre d'annonces actives (remplit les emplacements libres).
+max_listings = 5
+# Honorer aussi les annonces d'autrui qui offrent une de mes cartes manquantes.
+fulfill_others = false
+fulfill_per_pass = 3
+# Cibler en priorité les séries proches de la complétion (peu de cartes restantes).
+prefer_near_completion = true
+# Dry-run : simule (journalise) sans écrire — pour valider avant d'engager de vraies cartes.
+dry_run = false
+# Annonce active plus vieille que ça -> annulée puis recréée fraîche. 0 = jamais.
+max_listing_age_hours = 24.0
+# Focaliser : ne cibler QUE les séries à qui il manque ≤ N cartes (proches de la fin). 0 = toutes.
+near_completion_max_missing = 0
+
+[recycle]
+# Endpoint global qui liste tes DOUBLONS (avec id hex d'exemplaire) — renvoie un lot limité
+# par appel ; le moteur le rappelle en boucle au fil des recyclages.
+duplicates_endpoint = "/api/cards/duplicates"
+# Nb max d'exemplaires recyclés par appel (anti-429 + l'endpoint limite déjà le lot).
+max_per_call = 20
+# Parsing tolérant : laisser vide pour auto-détection. À ajuster si besoin une fois
+# qu'un exemple de réponse de /api/cards/duplicates est connu.
+list_key = ""           # clé du tableau dans la réponse (ex: "duplicates" / "cards"), vide = auto
+id_field = ""           # champ de l'id hex d'exemplaire, vide = auto
+type_field = ""         # champ du type "wiki-...", vide = auto
+quantity_field = ""     # champ du nb total de copies si présent, vide = auto
+
+# Valeurs de recyclage par rareté (encre). LR/UR/SSR/SR connues ; R/UC/C apprises
+# empiriquement (laissées à 0 = inconnu, complétées via les réponses observées).
+[recycle.values]
+LR = 500
+UR = 250
+SSR = 100
+SR = 40
+R = 0
+UC = 0
+C = 0
+
+[server]
+host = "127.0.0.1"
+port = 8765
+
+[paths]
+database = "wikitcg.db"
+log_file = "wikitcg.log"
+
+[logging]
+# Niveau global : "DEBUG" (tout), "INFO" (défaut), "WARNING", "ERROR".
+level = "INFO"
+# true = trace CHAQUE requête API (méthode, route, statut, durée) — utile pour diagnostiquer.
+log_requests = false

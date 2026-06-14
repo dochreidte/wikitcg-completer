@@ -1,0 +1,38 @@
+# =====================================================================
+#  wikitcg-completer — comptes pour le farm MULTI-COMPTES (run_multi.py)
+#  Copie ce fichier en  accounts.toml  et renseigne tes comptes.
+#
+#  Principe : chaque compte ouvre UNE seule série et recycle ses doublons pour
+#  racheter des packs. On exploite un compte à fond puis on bascule au suivant
+#  quand il n'a plus rien à faire (plus de packs gratuits, encre insuffisante,
+#  recyclage plafonné par le quota journalier ~200/j). On boucle indéfiniment.
+#
+#  Les réglages COMMUNS (throttle, retry, valeurs de recyclage, keep_spares,
+#  recycle_reserve_mode, recycle_quota_cooldown_minutes…) viennent de config.toml.
+#  ⚠️ Ce fichier contient des secrets (cookies) : il est gitignoré.
+# =====================================================================
+
+[runner]
+# Cadence de surveillance du compte actif (s) : on bascule dès qu'il passe en attente.
+poll_seconds = 8.0
+# Quand TOUS les comptes sont épuisés sur un tour, attente avant de recommencer (minutes).
+# Laisse le temps aux packs gratuits de se régénérer / au quota de recyclage de se réinitialiser.
+idle_cycle_minutes = 30.0
+# Page web de suivi (read-only) : ouvre http://127.0.0.1:8766 pendant que ça tourne.
+web = true
+web_host = "127.0.0.1"
+web_port = 8766
+
+# --- Un bloc [[account]] par compte. Duplique-le autant que nécessaire. ---
+[[account]]
+name = "compte1"                       # libellé libre (sert au nom du fichier de base : wikitcg_compte1.db)
+series = "myths-legends"               # SLUG de la série à farmer (ex. space-cosmos, ancient-civilizations…)
+session_cookie = "PASTE_YOUR_wtcg_session_JWT_HERE"
+extra_cookies = "cf_clearance=PASTE_cf_clearance_HERE"   # même User-Agent que config.toml
+# mystery = false                      # (optionnel) ouvrir aussi le pack mystery (autre pool) — défaut false
+
+[[account]]
+name = "compte2"
+series = "space-cosmos"
+session_cookie = "PASTE_YOUR_wtcg_session_JWT_HERE"
+extra_cookies = "cf_clearance=PASTE_cf_clearance_HERE"

@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WikiTCG · Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e0c09; --bg2:#16120c; --panel:#1c1710; --panel2:#241d13;
+    --line:#3a2f1e; --gold:#d4a843; --gold-dim:#8b6914; --ink:#6fb3c9;
+    --txt:#ecdfc6; --txt-dim:#9a8a6c; --good:#7bbf6a; --warn:#d8a23a; --err:#d2674f;
+    --radius:14px;
+    /* couleurs par rareté */
+    --r-LR:#e0a3ff; --r-UR:#ff9d6b; --r-SSR:#ffd166; --r-SR:#6fb3c9;
+    --r-R:#7bbf6a; --r-UC:#b9a884; --r-C:#7c6c4f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:"Spline Sans",sans-serif; color:var(--txt);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(212,168,67,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(111,179,201,.06), transparent 55%),
+      linear-gradient(180deg,var(--bg),var(--bg2));
+    min-height:100%;
+  }
+  body::before{ /* grain */
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.035; z-index:1;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{position:relative; z-index:2; max-width:1180px; margin:0 auto; padding:28px 22px 60px}
+
+  header{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap;
+    border-bottom:1px solid var(--line); padding-bottom:18px}
+  .brand h1{font-family:"Fraunces",serif; font-weight:900; font-size:34px; letter-spacing:.5px;
+    margin:0; line-height:1; background:linear-gradient(180deg,#f3e4bd,var(--gold));
+    -webkit-background-clip:text; background-clip:text; color:transparent}
+  .brand .sub{color:var(--txt-dim); font-size:13px; margin-top:6px; letter-spacing:2px; text-transform:uppercase}
+  .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .pill{display:inline-flex; align-items:center; gap:8px; font-family:"Spline Sans Mono",monospace;
+    font-size:12px; padding:7px 12px; border:1px solid var(--line); border-radius:999px;
+    background:var(--panel); text-transform:uppercase; letter-spacing:1px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--txt-dim);box-shadow:0 0 0 0 rgba(0,0,0,0)}
+  .dot.on{background:var(--good); animation:pulse 2s infinite}
+  .dot.run{background:var(--gold); animation:pulse 1.1s infinite}
+  .dot.wait{background:var(--warn)} .dot.err{background:var(--err)} .dot.off{background:var(--err)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(212,168,67,.5)}70%{box-shadow:0 0 0 7px rgba(212,168,67,0)}100%{box-shadow:0 0 0 0 rgba(212,168,67,0)}}
+  button{font-family:"Spline Sans",sans-serif; font-weight:600; font-size:13px; cursor:pointer;
+    color:var(--bg); background:linear-gradient(180deg,#f0dca8,var(--gold)); border:none;
+    padding:10px 16px; border-radius:10px; transition:transform .08s ease, filter .15s ease}
+  button:hover{filter:brightness(1.08)} button:active{transform:translateY(1px)}
+  button.ghost{background:transparent; color:var(--txt); border:1px solid var(--line)}
+  button:disabled{opacity:.4; cursor:not-allowed; filter:none}
+
+  .banner{margin:16px 0 0; padding:11px 16px; border-radius:10px; font-size:13px;
+    border:1px solid var(--line); background:var(--panel); color:var(--txt-dim); display:none}
+  .banner.show{display:block} .banner b{color:var(--warn)}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:22px 0 14px}
+  .stat{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px 18px; position:relative; overflow:hidden}
+  .stat::after{content:""; position:absolute; right:-30px; top:-30px; width:90px; height:90px;
+    border-radius:50%; background:radial-gradient(circle,rgba(212,168,67,.12),transparent 70%)}
+  .stat .k{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--txt-dim)}
+  .stat .v{font-family:"Spline Sans Mono",monospace; font-size:30px; font-weight:500; margin-top:6px;
+    color:var(--gold); line-height:1.05}
+  .stat .v small{font-size:14px; color:var(--txt-dim)}
+  .stat.ink .v{color:var(--ink)}
+  .stat .note{font-family:"Spline Sans Mono",monospace; font-size:11px; color:var(--txt-dim); margin-top:7px;
+    min-height:13px}
+  .stat .note b{color:var(--gold)}
+  .xpbar{height:5px; border-radius:5px; background:#000; margin-top:9px; overflow:hidden; border:1px solid rgba(0,0,0,.4)}
+  .xpbar > i{display:block; height:100%; background:linear-gradient(90deg,var(--gold-dim),var(--gold)); transition:width .5s ease}
+
+  /* ---- panneau de contrôle (réglages live) ---- */
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:var(--radius); padding:14px 18px; margin-bottom:20px}
+  .panel-row{display:flex; align-items:center; gap:22px 26px; flex-wrap:wrap}
+  .panel .lab{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--txt-dim); margin-right:4px}
+  .toggle{display:inline-flex; align-items:center; gap:9px; cursor:pointer; user-select:none; font-size:13px}
+  .toggle input{display:none}
+  .track{width:38px; height:21px; border-radius:999px; background:#0c0a07; border:1px solid var(--line);
+    position:relative; transition:background .15s ease, border-color .15s ease; flex:0 0 auto}
+  .track::after{content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+    background:var(--txt-dim); transition:transform .16s ease, background .16s ease}
+  .toggle input:checked + .track{background:rgba(123,191,106,.25); border-color:var(--good)}
+  .toggle input:checked + .track::after{transform:translateX(17px); background:var(--good)}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .seg button{background:transparent; color:var(--txt-dim); border:none; padding:7px 13px; border-radius:0; font-size:12px}
+  .seg button.active{background:var(--gold); color:var(--bg)}
+  .num{display:inline-flex; align-items:center; gap:8px; font-size:13px}
+  .num input{width:74px; background:#0c0a07; border:1px solid var(--line); color:var(--txt); border-radius:8px;
+    padding:6px 9px; font-family:"Spline Sans Mono",monospace; font-size:13px}
+  .num input:focus{outline:none; border-color:var(--gold-dim)}
+
+  .layout{display:grid; grid-template-columns:1.55fr 1fr; gap:20px; align-items:start}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+  h2{font-family:"Fraunces",serif; font-weight:600; font-size:19px; margin:0 0 14px;
+    display:flex; align-items:center; gap:10px}
+  h2 .count{font-family:"Spline Sans Mono",monospace; font-size:12px; color:var(--txt-dim)}
+
+  .series{display:flex; flex-direction:column; gap:10px}
+  .srow{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:12px; padding:13px 15px}
+  .srow.done{opacity:.6}
+  .stop{display:flex; justify-content:space-between; align-items:baseline; gap:12px}
+  .sname{font-weight:600}
+  .smeta{font-family:"Spline Sans Mono",monospace; font-size:12px; color:var(--txt-dim)}
+  .smeta b{color:var(--gold)}
+  .bar{height:8px; border-radius:6px; background:#000; margin-top:10px; overflow:hidden;
+    border:1px solid rgba(0,0,0,.4)}
+  .bar > i{display:block; height:100%; border-radius:6px; transition:width .5s ease;
+    background:linear-gradient(90deg,var(--accent,#8b6914),var(--accent2,#d4a843))}
+  .miss{font-size:11px; color:var(--txt-dim); margin-top:6px}
+  .miss b{color:var(--txt)}
+
+  .log{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px; height:560px; display:flex; flex-direction:column}
+  .feed{overflow-y:auto; flex:1; margin:-4px -6px 0; padding:0 6px}
+  .feed::-webkit-scrollbar{width:8px} .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+  .entry{display:grid; grid-template-columns:64px 1fr; gap:10px; padding:8px 0;
+    border-bottom:1px dashed rgba(58,47,30,.6); font-size:13px; animation:fade .3s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(-3px)}to{opacity:1}}
+  .entry time{font-family:"Spline Sans Mono",monospace; font-size:11px; color:var(--txt-dim)}
+  .entry .msg{color:var(--txt)}
+  .entry .tag{font-family:"Spline Sans Mono",monospace; font-size:10px; text-transform:uppercase;
+    letter-spacing:1px; color:var(--gold-dim)}
+  .entry.warn .msg{color:var(--warn)} .entry.error .msg{color:var(--err)}
+  .ink-plus{color:var(--ink); font-family:"Spline Sans Mono",monospace; font-size:12px}
+  .empty{color:var(--txt-dim); font-size:13px; text-align:center; margin-top:30px}
+  footer{margin-top:30px; color:var(--txt-dim); font-size:11px; text-align:center; letter-spacing:1px}
+
+  /* ---- stats / graphes ---- */
+  .grid3{display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:20px; margin-top:24px; align-items:start}
+  @media(max-width:900px){.grid3{grid-template-columns:1fr}}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px 18px}
+  .card h3{font-family:"Fraunces",serif; font-weight:600; font-size:16px; margin:0 0 4px}
+  .card .csub{color:var(--txt-dim); font-size:12px; margin-bottom:12px}
+  .spark{width:100%; height:90px; display:block}
+  .rrow{display:grid; grid-template-columns:34px 1fr 64px; gap:9px; align-items:center; margin:7px 0; font-size:12px}
+  .rrow .rk{font-family:"Spline Sans Mono",monospace; color:var(--txt-dim)}
+  .rrow .rt{height:9px; border-radius:5px; background:#000; overflow:hidden; border:1px solid rgba(0,0,0,.4)}
+  .rrow .rt > i{display:block; height:100%; border-radius:5px}
+  .rrow .rv{font-family:"Spline Sans Mono",monospace; text-align:right; color:var(--txt-dim)}
+  .bigink{font-family:"Spline Sans Mono",monospace; font-size:34px; color:var(--ink); line-height:1}
+  .bigink small{font-size:13px; color:var(--txt-dim)}
+
+  /* ---- marketplace ---- */
+  .mkt{margin-top:24px}
+  .mkt-head{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px}
+  .mkt-head h2{margin:0}
+  .mkt-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:10px}
+  @media(max-width:900px){.mkt-grid{grid-template-columns:1fr}}
+  .mkt-list{max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-top:6px}
+  .mkt-list::-webkit-scrollbar{width:8px} .mkt-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+  .mkt-row{display:grid; grid-template-columns:1fr 16px 1fr auto; align-items:center; gap:8px; font-size:12px;
+    padding:7px 10px; border:1px solid var(--line); border-radius:9px; background:#0c0a07}
+  .mkt-row .mono{font-family:"Spline Sans Mono",monospace}
+  .mkt-arrow{color:var(--gold); text-align:center}
+  .mkt-tag{font-size:10px; font-family:"Spline Sans Mono",monospace; text-transform:uppercase; letter-spacing:.5px}
+
+  .srow{cursor:pointer; transition:border-color .15s ease, transform .06s ease}
+  .srow:hover{border-color:var(--gold-dim)}
+  .srow:active{transform:scale(.997)}
+  .overlay{position:fixed; inset:0; z-index:50; background:rgba(6,5,3,.74); padding:24px;
+    display:none; align-items:center; justify-content:center; backdrop-filter:blur(3px)}
+  .overlay.show{display:flex}
+  .modal{width:min(640px,94vw); max-height:86vh; overflow:auto; padding:22px 24px;
+    background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+    border-radius:16px; box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .modal h3{font-family:"Fraunces",serif; font-size:24px; margin:0 0 2px}
+  .modal .sub2{color:var(--txt-dim); font-size:13px; margin-bottom:16px}
+  .modal .close{float:right; background:transparent; border:1px solid var(--line); color:var(--txt);
+    padding:5px 10px; border-radius:8px; cursor:pointer}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 18px}
+  .chip{font-family:"Spline Sans Mono",monospace; font-size:13px; padding:6px 11px; border-radius:999px;
+    border:1px solid var(--line); background:#0c0a07}
+  .chip .r{color:var(--txt-dim); margin-right:7px} .chip b{color:var(--gold)}
+  .chip.full b{color:var(--good)} .chip.full{border-color:rgba(123,191,106,.4)}
+  .misslist{border-top:1px solid var(--line); padding-top:12px}
+  .missrow{display:flex; justify-content:space-between; gap:10px; padding:6px 0; font-size:13px;
+    border-bottom:1px dashed rgba(58,47,30,.5)}
+  .missrow .rr{font-family:"Spline Sans Mono",monospace; font-size:11px; color:var(--gold-dim)}
+  .modal .loading{color:var(--txt-dim); font-size:13px}
+  .ta{width:100%; min-height:70px; resize:vertical; background:#0c0a07; border:1px solid var(--line);
+    color:var(--txt); border-radius:9px; padding:9px 11px; font-family:"Spline Sans Mono",monospace;
+    font-size:12px; margin:6px 0 12px; word-break:break-all}
+  .ta:focus{outline:none; border-color:var(--gold-dim)}
+  .pill.click{cursor:pointer} .pill.click:hover{border-color:var(--gold-dim)}
+  .toast{position:fixed; right:18px; bottom:18px; z-index:60; background:var(--panel2); color:var(--txt);
+    border:1px solid var(--good); border-radius:10px; padding:10px 15px; font-size:13px; opacity:0;
+    transform:translateY(8px); transition:opacity .2s, transform .2s; pointer-events:none}
+  .toast.show{opacity:1; transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>The Vault</h1>
+      <div class="sub">WikiTCG · completion engine</div>
+    </div>
+    <div class="controls">
+      <span class="pill"><span id="ws-dot" class="dot off"></span><span id="ws-txt">offline</span></span>
+      <span class="pill"><span id="st-dot" class="dot"></span><span id="st-txt">idle</span></span>
+      <span class="pill click" id="sess-pill" title="Session — cliquer pour mettre à jour le cookie"><span id="sess-dot" class="dot"></span><span id="sess-txt">session</span></span>
+      <button id="btn-start">▶ Démarrer</button>
+      <button id="btn-stop" class="ghost">■ Stop</button>
+      <button id="btn-sync" class="ghost">⟳ Sync</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner"></div>
+
+  <section class="stats">
+    <div class="stat ink"><div class="k">Encre</div><div class="v" id="s-ink">—</div>
+      <div class="note" id="s-ink-note"></div></div>
+    <div class="stat"><div class="k">Packs</div>
+      <div class="v" id="s-packs">—<small id="s-packs-max"></small></div>
+      <div class="note" id="s-regen"></div></div>
+    <div class="stat"><div class="k">Niveau</div><div class="v" id="s-level">—</div>
+      <div class="xpbar"><i id="s-xpbar" style="width:0%"></i></div>
+      <div class="note" id="s-xp"></div></div>
+    <div class="stat"><div class="k">Série (streak)</div><div class="v" id="s-streak">—</div>
+      <div class="note" id="s-streak-note"></div></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-row">
+      <span class="lab" id="cfg-label" title="">Réglages</span>
+      <label class="toggle"><input type="checkbox" id="c-buy"><span class="track"></span>Acheter des packs à l'encre</label>
+      <label class="toggle"><input type="checkbox" id="c-recycle"><span class="track"></span>Recyclage auto</label>
+      <label class="toggle"><input type="checkbox" id="c-open"><span class="track"></span>Ouverture auto</label>
+      <label class="toggle"><input type="checkbox" id="c-mystery"><span class="track"></span>Pack mystery (~6h)</label>
+      <span class="num"><span class="lab">Réserve d'encre</span>
+        <input type="number" id="c-reserve" min="0" step="50"></span>
+      <span class="num"><span class="lab">Packs vides</span>
+        <span class="seg" id="c-empty">
+          <button data-v="wait">Attendre</button><button data-v="stop">Arrêter</button>
+        </span></span>
+      <span class="num"><span class="lab">Recyclage</span>
+        <span class="seg" id="c-recmode">
+          <button data-v="surplus">Surplus</button><button data-v="on_demand">À la demande</button>
+        </span></span>
+      <span class="num"><span class="lab">Réserve</span>
+        <span class="seg" id="c-resmode" title="Doublons gardés : Fixe = keep_spares ; Manquantes = autant que de cartes manquantes par rareté">
+          <button data-v="fixed">Fixe</button><button data-v="missing">Manquantes</button>
+        </span></span>
+      <label class="toggle"><input type="checkbox" id="c-autostart"><span class="track"></span>Démarrage auto</label>
+      <span class="num"><span class="lab">Logs</span>
+        <span class="seg" id="c-loglevel">
+          <button data-v="DEBUG">DEBUG</button><button data-v="INFO">INFO</button><button data-v="WARNING">WARN</button><button data-v="ERROR">ERR</button>
+        </span></span>
+      <label class="toggle"><input type="checkbox" id="c-logreq"><span class="track"></span>Trace requêtes</label>
+      <button class="ghost" id="c-reset" style="font-size:12px; padding:7px 12px">↺ Réinitialiser</button>
+    </div>
+  </section>
+
+  <div class="layout">
+    <section>
+      <h2>Progression des séries <span class="count" id="series-count"></span></h2>
+      <div class="series" id="series"></div>
+    </section>
+    <section>
+      <h2>Journal en direct</h2>
+      <div class="log"><div class="feed" id="feed"><div class="empty">En attente d'activité…</div></div></div>
+    </section>
+  </div>
+
+  <section class="grid3">
+    <div class="card">
+      <h3>Encre dans le temps</h3>
+      <div class="csub" id="ink-trend">—</div>
+      <svg class="spark" id="spark" viewBox="0 0 320 90" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="card">
+      <h3>Tirages par rareté</h3>
+      <div class="csub" id="pull-sub">—</div>
+      <div id="pull-bars"></div>
+    </div>
+    <div class="card">
+      <h3>Recyclage</h3>
+      <div class="csub">Encre totale récupérée</div>
+      <div class="bigink"><span id="rec-ink">0</span> <small>encre · <span id="rec-count">0</span> carte(s)</small></div>
+      <div id="rec-bars" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section class="panel mkt">
+    <div class="mkt-head">
+      <h2>Marketplace <span class="count" id="mkt-status">—</span></h2>
+      <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+        <label class="toggle"><input type="checkbox" id="c-mkt"><span class="track"></span>Auto-annonces</label>
+        <label class="toggle"><input type="checkbox" id="c-fulfill"><span class="track"></span>Honorer les offres</label>
+        <label class="toggle"><input type="checkbox" id="c-dryrun"><span class="track"></span>Dry-run (simuler)</label>
+        <span class="num"><span class="lab">Max</span><input type="number" id="c-maxlist" min="1" max="20" step="1" style="width:56px"></span>
+        <span class="num"><span class="lab" title="Ne cibler que les séries à qui il manque ≤ N cartes (0 = toutes)">Focus ≤</span><input type="number" id="c-near" min="0" max="200" step="1" style="width:56px"></span>
+        <button class="ghost" id="mkt-refresh">⟳ Actualiser</button>
+      </div>
+    </div>
+    <div class="csub" style="color:var(--txt-dim);font-size:12px">
+      ⚠️ Échanges avec de <b>vrais joueurs</b> (engage tes cartes). Contrat <code>create</code>/<code>cancel</code>
+      vérifié en live. « Honorer les offres » donne une de tes cartes contre une manquante — <b>irréversible</b>.
+    </div>
+    <div class="mkt-grid">
+      <div><div class="csub">Mes annonces</div><div id="mkt-mine" class="mkt-list"><div class="csub">—</div></div></div>
+      <div><div class="csub">Marché — annonces actives</div><div id="mkt-market" class="mkt-list"><div class="csub">—</div></div></div>
+    </div>
+  </section>
+
+  <div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal" id="modal"></div>
+  </div>
+
+  <footer>wikitcg-completer · tableau de bord temps réel (WebSocket + rafraîchissement 5 s)</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => (n ?? 0).toLocaleString('fr-FR');
+const RARITIES = ['LR','UR','SSR','SR','R','UC','C'];
+const rcol = r => getComputedStyle(document.documentElement).getPropertyValue('--r-'+r).trim() || '#d4a843';
+let feedEmpty = true;
+let regenAt = null, packsNow = 0, packsMax = 0;
+
+const STATUS = {
+  idle:['on','idle'], syncing:['run','synchronisation'], running:['run','en marche'],
+  waiting:['wait','attente régen'], stopped:['on','arrêté'], error:['err','erreur']
+};
+
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function setStatus(s){
+  const [cls,label] = STATUS[s] || ['on', s];
+  $('#st-dot').className = 'dot ' + cls;
+  $('#st-txt').textContent = label;
+  $('#btn-start').disabled = (s === 'running' || s === 'syncing');
+  $('#btn-stop').disabled  = !(s === 'running' || s === 'waiting' || s === 'syncing');
+}
+
+function setResources(r){
+  if(!r) return;
+  $('#s-ink').textContent   = fmt(r.ink);
+  packsNow = r.total_available ?? r.free_packs ?? 0;
+  packsMax = r.max_free_packs ?? 0;
+  $('#s-packs').firstChild.textContent = fmt(packsNow);
+  $('#s-packs-max').textContent = packsMax ? ' / ' + fmt(packsMax) : '';
+  $('#s-level').textContent = fmt(r.level);
+  const prog = (r.xp_progress != null) ? r.xp_progress : 0;
+  $('#s-xpbar').style.width = Math.round(prog*100) + '%';
+  $('#s-xp').textContent = r.xp_to_next ? fmt(r.xp_to_next) + ' xp → niv. suivant' : '';
+  $('#s-streak').textContent = '🔥 ' + fmt(r.streak);
+  if(r.listings_active != null) $('#s-streak-note').textContent = r.listings_active + ' annonce(s) active(s)';
+  regenAt = r.next_regen_at || null;
+  tickRegen();
+}
+
+function tickRegen(){
+  const el = $('#s-regen');
+  if(packsMax && packsNow >= packsMax){ el.innerHTML = 'plein'; return; }
+  if(!regenAt){ el.textContent = ''; return; }
+  let ms = regenAt - Date.now();
+  if(ms <= 0){ el.innerHTML = 'régén imminente…'; return; }
+  const s = Math.floor(ms/1000), m = Math.floor(s/60);
+  const txt = m>0 ? `${m}m ${String(s%60).padStart(2,'0')}s` : `${s}s`;
+  el.innerHTML = 'prochain pack dans <b>'+txt+'</b>';
+}
+setInterval(tickRegen, 1000);
+
+function renderSeries(list){
+  if(!list) return;
+  list = [...list].sort((a,b)=> (a.missing===0)-(b.missing===0) || a.pct-b.pct);
+  const done = list.filter(s=>s.missing===0).length;
+  const tot = list.reduce((a,s)=>a+s.total,0), own = list.reduce((a,s)=>a+s.owned,0);
+  const overall = tot ? (100*own/tot).toFixed(1) : 0;
+  $('#series-count').textContent = `${done}/${list.length} complètes · ${fmt(own)}/${fmt(tot)} (${overall}%)`;
+  $('#series').innerHTML = list.map(s=>{
+    const acc = s.primary_color || '#8b6914', acc2 = s.accent_color || '#d4a843';
+    return `<div class="srow ${s.missing===0?'done':''}" onclick="openSeries('${s.series_id}')">
+      <div class="stop">
+        <span class="sname">${s.name}</span>
+        <span class="smeta"><b>${s.owned}</b>/${s.total} · ${s.pct}%</span>
+      </div>
+      <div class="bar"><i style="width:${s.pct}%;--accent:${acc};--accent2:${acc2}"></i></div>
+      <div class="miss">${s.missing===0 ? 'Série complète ✓' : `<b>${s.missing}</b> carte(s) manquante(s) · ${fmt(s.pulls)} tirages`}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- réglages live ---------- */
+function applyConfig(c){
+  if(!c) return;
+  $('#c-buy').checked = !!c.buy_packs_with_ink;
+  $('#c-recycle').checked = !!c.auto_recycle;
+  $('#c-open').checked = !!c.auto_open;
+  $('#c-mystery').checked = !!c.mystery_pack;
+  $('#c-autostart').checked = !!c.autostart;
+  if(c.min_ink_reserve != null && document.activeElement !== $('#c-reserve'))
+    $('#c-reserve').value = c.min_ink_reserve;
+  document.querySelectorAll('#c-empty button').forEach(b=>
+    b.classList.toggle('active', b.dataset.v === (c.on_empty||'wait')));
+  document.querySelectorAll('#c-recmode button').forEach(b=>
+    b.classList.toggle('active', b.dataset.v === (c.recycle_mode||'surplus')));
+  document.querySelectorAll('#c-resmode button').forEach(b=>
+    b.classList.toggle('active', b.dataset.v === (c.recycle_reserve_mode||'fixed')));
+  $('#c-mkt').checked = !!c.enabled;
+  $('#c-fulfill').checked = !!c.fulfill_others;
+  $('#c-dryrun').checked = !!c.dry_run;
+  if(c.max_listings != null && document.activeElement !== $('#c-maxlist'))
+    $('#c-maxlist').value = c.max_listings;
+  if(c.near_completion_max_missing != null && document.activeElement !== $('#c-near'))
+    $('#c-near').value = c.near_completion_max_missing;
+}
+async function postConfig(patch){
+  try{
+    const r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(patch)});
+    const d = await r.json(); applyConfig(d.config); toast('Réglage enregistré');
+  }catch(e){ toast('Échec de l\'enregistrement'); }
+}
+$('#c-buy').onchange = e => postConfig({buy_packs_with_ink: e.target.checked});
+$('#c-recycle').onchange = e => postConfig({auto_recycle: e.target.checked});
+$('#c-open').onchange = e => postConfig({auto_open: e.target.checked});
+$('#c-mystery').onchange = e => postConfig({mystery_pack: e.target.checked});
+$('#c-autostart').onchange = e => postConfig({autostart: e.target.checked});
+$('#c-reserve').onchange = e => postConfig({min_ink_reserve: Number(e.target.value)||0});
+document.querySelectorAll('#c-empty button').forEach(b=>
+  b.onclick = ()=> postConfig({on_empty: b.dataset.v}));
+document.querySelectorAll('#c-recmode button').forEach(b=>
+  b.onclick = ()=> postConfig({recycle_mode: b.dataset.v}));
+document.querySelectorAll('#c-resmode button').forEach(b=>
+  b.onclick = ()=> postConfig({recycle_reserve_mode: b.dataset.v}));
+$('#c-reset').onclick = async ()=>{
+  try{ const d = await (await fetch('/api/config/reset',{method:'POST'})).json();
+    applyConfig(d.config); toast('Réglages réinitialisés (config.toml)'); }
+  catch(e){ toast('Échec de la réinitialisation'); }
+};
+
+/* ---------- niveau de log (live) ---------- */
+function applyLogging(lg){
+  if(!lg) return;
+  document.querySelectorAll('#c-loglevel button').forEach(b=>
+    b.classList.toggle('active', b.dataset.v === (lg.level||'INFO')));
+  $('#c-logreq').checked = !!lg.log_requests;
+}
+async function postLogging(patch){
+  try{ const d = await (await fetch('/api/logging',{method:'POST',headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(patch)})).json(); applyLogging(d.logging); toast('Logs : niveau appliqué'); }
+  catch(e){ toast('Échec du réglage des logs'); }
+}
+document.querySelectorAll('#c-loglevel button').forEach(b=> b.onclick = ()=> postLogging({level: b.dataset.v}));
+$('#c-logreq').onchange = e => postLogging({log_requests: e.target.checked});
+$('#c-mkt').onchange = async e =>{
+  if(e.target.checked && !confirm('Activer les auto-annonces ? Cela publie de vraies annonces engageant tes cartes auprès d\'autres joueurs.')){
+    e.target.checked = false; return; }
+  await postConfig({enabled: e.target.checked}); loadMarket();
+};
+$('#c-fulfill').onchange = async e =>{
+  if(e.target.checked && !confirm('Honorer les offres d\'autrui ? Chaque échange DONNE une de tes cartes (irréversible).')){
+    e.target.checked = false; return; }
+  await postConfig({fulfill_others: e.target.checked});
+};
+$('#c-maxlist').onchange = e => postConfig({max_listings: Number(e.target.value)||5});
+$('#c-near').onchange = e => postConfig({near_completion_max_missing: Math.max(0, Number(e.target.value)||0)});
+$('#c-dryrun').onchange = e => postConfig({dry_run: e.target.checked});
+
+/* ---------- session / token ---------- */
+function setToken(t){
+  const dot = $('#sess-dot'), txt = $('#sess-txt');
+  if(!t || !t.present){ dot.className='dot err'; txt.textContent='session ✗'; return; }
+  if(t.expired){ dot.className='dot err'; txt.textContent='session expirée'; return; }
+  if(t.expires_in != null){
+    const d = t.expires_in/86400;
+    dot.className = 'dot ' + (d < 2 ? 'wait' : 'on');
+    txt.textContent = d >= 1 ? `session: ${Math.floor(d)}j` : `session: ${Math.floor(t.expires_in/3600)}h`;
+  } else { dot.className='dot on'; txt.textContent='session'; }
+}
+function openCookieModal(t){
+  $('#modal').innerHTML = `<button class="close" onclick="closeModal()">✕</button>
+    <h3>Session wikitcg</h3>
+    <div class="sub2">wikitcg n'expose aucun endpoint de refresh : quand le jeton approche de
+      l'expiration, reconnecte-toi dans le navigateur, copie le cookie <code>wtcg_session</code>
+      (DevTools → Application → Cookies) et colle-le ici. Effet immédiat, sans redémarrage.</div>
+    <div class="sub2" id="ck-info">${t&&t.present ? (t.expired?'⚠ Session expirée.':'Expire dans ~'+Math.floor((t.expires_in||0)/86400)+' j'+(t.email?' · '+t.email:'')) : '⚠ Aucune session valide.'}</div>
+    <textarea class="ta" id="ck-session" placeholder="wtcg_session (JWT eyJ...)"></textarea>
+    <textarea class="ta" id="ck-extra" placeholder="cookies supplémentaires optionnels — ex : cf_clearance=...; autre=..."></textarea>
+    <button onclick="saveCookie()">Enregistrer &amp; appliquer</button>`;
+  $('#overlay').classList.add('show');
+}
+async function saveCookie(){
+  const session = $('#ck-session').value.trim(), extra = $('#ck-extra').value.trim();
+  if(!session){ toast('Colle un cookie wtcg_session'); return; }
+  try{
+    const r = await fetch('/api/auth/cookie',{method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_cookie:session, extra_cookies:extra})});
+    const d = await r.json();
+    if(d.ok){ setToken(d.token); toast('Session mise à jour'); closeModal(); loadState(); }
+    else toast(d.error || 'Cookie refusé');
+  }catch(e){ toast('Échec de la mise à jour'); }
+}
+$('#sess-pill').onclick = ()=> openCookieModal(window._token);
+
+/* ---------- graphes ---------- */
+function renderSpark(history){
+  const svg = $('#spark');
+  const pts = (history||[]).filter(h=>h.ink!=null);
+  if(pts.length < 2){ svg.innerHTML=''; $('#ink-trend').textContent='Pas encore assez de données.'; return; }
+  const xs = pts.map((_,i)=>i), inks = pts.map(p=>p.ink);
+  const min = Math.min(...inks), max = Math.max(...inks), span = (max-min)||1;
+  const W=320,H=90,pad=6;
+  const x = i => pad + i*(W-2*pad)/(xs.length-1);
+  const y = v => H-pad - (v-min)*(H-2*pad)/span;
+  const line = pts.map((p,i)=>`${x(i).toFixed(1)},${y(p.ink).toFixed(1)}`).join(' ');
+  const area = `${x(0)},${H-pad} ` + line + ` ${x(pts.length-1)},${H-pad}`;
+  svg.innerHTML =
+    `<polygon points="${area}" fill="rgba(111,179,201,.12)"/>` +
+    `<polyline points="${line}" fill="none" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+  const first = inks[0], last = inks[inks.length-1], delta = last-first;
+  $('#ink-trend').innerHTML = `${fmt(last)} maintenant · ${delta>=0?'+':''}${fmt(delta)} sur la période · max ${fmt(max)}`;
+}
+
+function renderPulls(pc){
+  pc = pc||[];
+  const byR = {}; let total=0, nw=0;
+  pc.forEach(p=>{ byR[p.rarity]=p; total+=p.count; nw+=(p.new||0); });
+  $('#pull-sub').textContent = total ? `${fmt(total)} tirages · ${fmt(nw)} nouvelles` : 'Aucun tirage encore.';
+  const maxc = Math.max(1, ...pc.map(p=>p.count));
+  $('#pull-bars').innerHTML = RARITIES.filter(r=>byR[r]).map(r=>{
+    const c = byR[r].count, pctW = Math.round(100*c/maxc);
+    return `<div class="rrow"><span class="rk" style="color:${rcol(r)}">${r}</span>
+      <span class="rt"><i style="width:${pctW}%;background:${rcol(r)}"></i></span>
+      <span class="rv">${fmt(c)} · ${(100*c/total).toFixed(1)}%</span></div>`;
+  }).join('') || '<div class="csub">—</div>';
+}
+
+function renderRecycle(rec, fails){
+  rec = rec||{by_rarity:[]};
+  $('#rec-ink').textContent = fmt(rec.total_ink||0);
+  $('#rec-count').textContent = fmt(rec.total_count||0);
+  const byR = {}; (rec.by_rarity||[]).forEach(x=>byR[x.rarity]=x);
+  const maxi = Math.max(1, ...(rec.by_rarity||[]).map(x=>x.ink));
+  let html = RARITIES.filter(r=>byR[r]).map(r=>{
+    const ink = byR[r].ink, pctW = Math.round(100*ink/maxi);
+    return `<div class="rrow"><span class="rk" style="color:${rcol(r)}">${r}</span>
+      <span class="rt"><i style="width:${pctW}%;background:${rcol(r)}"></i></span>
+      <span class="rv">${fmt(ink)}</span></div>`;
+  }).join('');
+  if(fails && fails.total){
+    const left = fails.next_retry_at ? Math.max(0, Math.round(fails.next_retry_at - Date.now()/1000)) : null;
+    const when = left!=null ? (left<60?`${left}s`:`${Math.floor(left/60)} min`) : '';
+    html += `<div class="csub" style="margin-top:9px;color:var(--warn)">⚠ ${fmt(fails.total)} carte(s) non recyclable(s) (erreur 500, mémorisées)${when?` · réessai ~${when}`:''}</div>`;
+  }
+  $('#rec-bars').innerHTML = html;
+}
+
+async function loadStats(){
+  try{
+    const d = await (await fetch('/api/stats')).json();
+    renderSpark(d.history); renderPulls(d.pull_counts); renderRecycle(d.recycle, d.recycle_failures);
+  }catch(e){ console.error(e); }
+}
+
+async function openSeries(sid){
+  const ov = $('#overlay'), m = $('#modal');
+  m.innerHTML = '<div class="loading">Chargement…</div>';
+  ov.classList.add('show');
+  try{
+    const d = await (await fetch('/api/series/'+sid)).json();
+    const s = d.series || {};
+    let chips = '';
+    if(d.rarity && d.rarity.length){
+      chips = '<div class="chips">' + d.rarity.map(r=>{
+        const full = r.owned>=r.total ? 'full' : '';
+        return `<span class="chip ${full}"><span class="r" style="color:${rcol(r.rarity)}">${r.rarity}</span><b>${r.owned}</b>/${r.total}</span>`;
+      }).join('') + '</div>';
+    } else if(!d.catalog_loaded){
+      chips = '<div class="sub2">Catalogue pas encore chargé — relance une synchro.</div>';
+    }
+    let miss = '';
+    if(d.missing && d.missing.length){
+      miss = '<div class="misslist"><div class="sub2">'+d.missing.length+' carte(s) manquante(s)</div>' +
+        d.missing.map(c=>`<div class="missrow"><span>${c.title||c.card_id}</span><span class="rr" style="color:${rcol(c.rarity)}">${c.rarity||''}</span></div>`).join('') +
+        '</div>';
+    } else if(d.catalog_loaded){
+      miss = '<div class="misslist"><div class="sub2">Série complète ✓</div></div>';
+    }
+    m.innerHTML = `<button class="close" onclick="closeModal()">✕</button>
+      <h3>${s.name||sid}</h3>
+      <div class="sub2">${s.owned||0}/${s.total||0} (${s.pct||0}%) · ${d.duplicates||0} doublon(s) en réserve</div>
+      ${chips}${miss}`;
+  }catch(e){ m.innerHTML = '<div class="loading">Erreur de chargement.</div>'; }
+}
+function closeModal(){ $('#overlay').classList.remove('show'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+function addEntry(a){
+  if(feedEmpty){ $('#feed').innerHTML=''; feedEmpty=false; }
+  const t = new Date(a.ts || Date.now());
+  const hh = t.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const ink = a.ink_delta ? ` <span class="ink-plus">${a.ink_delta>0?'+':''}${a.ink_delta}</span>` : '';
+  const div = document.createElement('div');
+  div.className = 'entry ' + (a.level||'info');
+  div.innerHTML = `<time>${hh}<br><span class="tag">${a.type||''}</span></time>
+                   <div class="msg">${a.message||''}${ink}</div>`;
+  $('#feed').prepend(div);
+  while($('#feed').children.length > 120) $('#feed').lastChild.remove();
+}
+
+/* ---------- marketplace (lecture seule) ---------- */
+function mktRow(l, mine){
+  const st = l.status || '';
+  const stc = st==='active' ? 'var(--good)' : (st==='cancelled' ? 'var(--err)' : 'var(--txt-dim)');
+  const rar = l.offered_rarity ? `<span class="mono" style="color:${rcol(l.offered_rarity)}">${l.offered_rarity}</span> ` : '';
+  const right = mine
+    ? `<span class="mkt-tag" style="color:${stc}">${st}</span>`
+    : `<span class="csub">${l.lister_name||''}</span>`;
+  return `<div class="mkt-row">
+    <span class="mono" title="j'offre">${rar}${l.offered_card_type||''}</span>
+    <span class="mkt-arrow">→</span>
+    <span class="mono" title="je veux">${l.wanted_card_id||''}</span>
+    ${right}</div>`;
+}
+async function loadMarket(){
+  const st = $('#mkt-status'); st.textContent = 'chargement…';
+  try{
+    const d = await (await fetch('/api/marketplace')).json();
+    if(d.error){ st.innerHTML = `<span style="color:var(--warn)">indisponible : ${d.error}</span>`; }
+    else st.textContent = `${d.enabled?'auto activé':'auto désactivé'} · ${d.active_mine||0}/${d.max_listings||5} actives · marché : ${(d.market||[]).length}`;
+    $('#mkt-mine').innerHTML = (d.mine&&d.mine.length) ? d.mine.map(l=>mktRow(l,true)).join('') : '<div class="csub">Aucune annonce.</div>';
+    $('#mkt-market').innerHTML = (d.market&&d.market.length) ? d.market.map(l=>mktRow(l,false)).join('') : '<div class="csub">Marché vide.</div>';
+  }catch(e){ st.textContent = 'erreur de chargement'; }
+}
+$('#mkt-refresh').onclick = loadMarket;
+
+// Applique l'état « live » (encre, packs, séries, statut, session, réglages) — SANS le feed.
+function applyLive(d){
+  if(!d) return;
+  setStatus(d.status); setResources(d.resources); renderSeries(d.series); applyConfig(d.config);
+  applyLogging(d.logging);
+  const ov = d.config_overridden || [];
+  const lbl = $('#cfg-label');
+  if(lbl){
+    lbl.textContent = ov.length ? `Réglages (${ov.length} via UI)` : 'Réglages';
+    lbl.title = ov.length ? 'Forcés via l\'UI (priment sur config.toml) : ' + ov.join(', ')
+                          : 'Valeurs de config.toml';
+  }
+  window._token = d.token; setToken(d.token);
+  updateBanner(d);
+}
+function updateBanner(d){
+  const link = '<a href="#" onclick="openCookieModal(window._token);return false" style="color:var(--gold)">mettre à jour le cookie</a>';
+  const msgs = [];
+  if(d.token && d.token.expired) msgs.push(`<b>Session expirée</b> — ${link} (wikitcg n'a pas de refresh : reconnecte-toi puis colle le cookie).`);
+  else if(!d.has_session) msgs.push(`<b>Cookie absent</b> — renseigne <code>api.session_cookie</code> ou ${link}.`);
+  else if(d.token && d.token.expires_in != null && d.token.expires_in < 2*86400)
+    msgs.push(`<b>Session bientôt expirée</b> (~${Math.floor(d.token.expires_in/3600)} h) — pense à la renouveler (${link}).`);
+  if(d.auth_error) msgs.push(`<b>Authentification refusée</b> : ${d.auth_error} — ${link}.`);
+  if(!d.recycle_enabled) msgs.push('<b>Recyclage désactivé</b> — endpoint des doublons non configuré.');
+  if(msgs.length){ $('#banner').innerHTML = msgs.join('<br>'); $('#banner').classList.add('show'); }
+  else $('#banner').classList.remove('show');
+}
+
+// Chargement initial : état complet (avec l'historique du journal) + stats.
+async function loadState(){
+  try{
+    const d = await (await fetch('/api/state')).json();
+    applyLive(d);
+    (d.actions||[]).slice().reverse().forEach(addEntry);
+  }catch(e){ console.error(e); }
+  loadStats();
+}
+
+// Rafraîchissement périodique léger (indépendant de l'activité du moteur) : garde encre,
+// packs et séries à jour même pendant les attentes (régén/backoff) ou si un event WS est perdu.
+async function refreshLive(){
+  try{ applyLive(await (await fetch('/api/live')).json()); }
+  catch(e){ /* réseau momentané : on réessaiera au prochain tick */ }
+}
+
+let statsTimer = null;
+function scheduleStats(){ clearTimeout(statsTimer); statsTimer = setTimeout(loadStats, 1500); }
+
+function connectWS(){
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen  = ()=>{ $('#ws-dot').className='dot on'; $('#ws-txt').textContent='live'; };
+  ws.onclose = ()=>{ $('#ws-dot').className='dot off'; $('#ws-txt').textContent='offline'; setTimeout(connectWS, 2500); };
+  ws.onmessage = ev=>{
+    const m = JSON.parse(ev.data);
+    if(m.kind==='status') setStatus(m.status);
+    else if(m.kind==='resources'){ setResources(m); }
+    else if(m.kind==='progress') renderSeries(m.series);
+    else if(m.kind==='config') applyConfig(m);
+    else if(m.kind==='logging') applyLogging(m);
+    else if(m.kind==='token'){ window._token = m; setToken(m); }
+    else if(m.kind==='action'){ addEntry(m); if(['open','recycle','buy','mystery'].includes(m.type)) scheduleStats(); }
+  };
+}
+
+$('#btn-start').onclick = ()=> fetch('/api/control/start',{method:'POST'});
+$('#btn-stop').onclick  = ()=> fetch('/api/control/stop',{method:'POST'});
+$('#btn-sync').onclick  = ()=> fetch('/api/control/sync',{method:'POST'});
+
+loadState(); connectWS(); loadMarket();
+setInterval(refreshLive, 5000);   // encre / packs / séries / session rafraîchis toutes les 5 s
+setInterval(loadStats, 20000);
+</script>
+</body>
+</html>
