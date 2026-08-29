@@ -1,49 +1,49 @@
 # wikitcg-completer — MVP
 
-Automatisation & suivi de complétion pour wikitcg.net : ouverture de boosters,
-recyclage des doublons, et un **tableau de bord web temps réel**.
+Automation & completion tracking for wikitcg.net: opening boosters,
+recycling duplicates, and a **real-time web dashboard**.
 
-> ⚠️ Automatiser le jeu va très probablement à l'encontre des CGU de wikitcg, et la
-> marketplace / le PvP classé impliquent d'autres joueurs réels. Le risque concret
-> côté compte est le bannissement. À utiliser en connaissance de cause, sur ton compte.
+> ⚠️ Automating the game very likely violates wikitcg's terms of service, and the
+> marketplace / ranked PvP involve other real players. The concrete risk to your
+> account is a ban. Use at your own risk, on your own account.
 
 ---
 
-## Périmètre de cette version (MVP)
+## Scope of this version (MVP)
 
-| Fonction | État |
+| Feature | Status |
 |---|---|
-| Suivi de complétion par série (temps réel) | ✅ |
-| Ouverture automatique de boosters (séries incomplètes priorisées) | ✅ |
-| Recyclage automatique des doublons (avec réserve pour les échanges) | ✅ |
-| Anti rate-limit : throttle + jitter + backoff exponentiel sur 429/5xx | ✅ |
-| Persistance SQLite + historique des actions | ✅ |
-| Tableau de bord web + WebSocket (réglages live, graphes, compte à rebours régén) | ✅ |
-| Achat de packs à l'encre quand les gratuits sont épuisés (recyclage d'abord si besoin) | ✅ |
-| Renouvellement du token de session (collage de cookie en direct, sans redémarrage) | ✅ |
-| Recyclage « à la demande » + démarrage auto | ✅ |
-| Priorité ouverture/achat ; la marketplace est un outil **complémentaire** (parallèle) | ✅ |
-| Tâches **parallèles** (ouverture / recyclage / marketplace) à cadences découplées | ✅ |
-| Annulation auto d'une annonce dès que sa carte voulue est tirée/obtenue | ✅ |
-| Recyclage **carte par carte** résilient (saute les exemplaires qui renvoient 500) | ✅ |
-| Ouverture du **pack mystery** (premium) dès qu'il est dispo (~1×/6h) | ✅ |
-| Attente calée sur le prochain pack gratuit + **backoff croissant** (ouverture & marketplace) | ✅ |
-| Réserve de doublons garantie pour la marketplace ; recyclage 500 **re-tenté après X min** | ✅ |
-| Journal enrichi (cartes rares, niveau, régén, résumé marketplace, mystery…) | ✅ |
-| Échanges marketplace (création/annulation/réponse d'annonces) | ✅ contrat vérifié (create/cancel testés en live) — **opt-in** car engage de vraies cartes |
+| Per-series completion tracking (real-time) | ✅ |
+| Automatic booster opening (incomplete series prioritized) | ✅ |
+| Automatic duplicate recycling (with a reserve kept for trades) | ✅ |
+| Anti rate-limit: throttle + jitter + exponential backoff on 429/5xx | ✅ |
+| SQLite persistence + action history | ✅ |
+| Web dashboard + WebSocket (live settings, charts, regen countdown) | ✅ |
+| Buying ink packs when free ones are exhausted (recycling first if needed) | ✅ |
+| Session token renewal (paste a fresh cookie live, no restart) | ✅ |
+| On-demand recycling + auto-start | ✅ |
+| Opening/buying priority; the marketplace is a **complementary** tool (parallel) | ✅ |
+| **Parallel** tasks (opening / recycling / marketplace) at decoupled cadences | ✅ |
+| Auto-cancel of a listing as soon as its wanted card is pulled/obtained | ✅ |
+| Resilient **card-by-card** recycling (skips copies that return 500) | ✅ |
+| Opening the **mystery pack** (premium) as soon as it's available (~1×/6h) | ✅ |
+| Wait aligned to the next free pack + **increasing backoff** (opening & marketplace) | ✅ |
+| Guaranteed duplicate reserve for the marketplace; 500 recycling **retried after X min** | ✅ |
+| Enriched log (rare cards, level, regen, marketplace summary, mystery…) | ✅ |
+| Marketplace trades (creating/cancelling/answering listings) | ✅ contract verified (create/cancel tested live) — **opt-in** since it commits real cards |
 
-### Marketplace — pool d'annonces toujours plein (phase 2, opt-in)
+### Marketplace — listing pool always full (phase 2, opt-in)
 
-Activable via `[marketplace] enabled = true`. À chaque passage, le moteur maintient
-**5 annonces actives en permanence** (`max_listings`) : il compte tes annonces actives
-et recrée des annonces jusqu'à revenir à 5, pour ne jamais laisser un emplacement
-vide pendant que les autres joueurs répondent. Pour chaque emplacement libre il vise
-une carte manquante (priorité aux **séries proches de la complétion**) et offre le
-doublon de la **rareté la plus faible éligible** (règle « je donne → je reçois »,
-préserve les cartes de valeur). Avec `fulfill_others = true`, il honore aussi les
-annonces d'autrui qui offrent une de tes cartes manquantes quand tu as un doublon à
-donner. Désactivé par défaut : ces actions engagent tes cartes et touchent d'autres
-joueurs réels.
+Enabled via `[marketplace] enabled = true`. On every pass, the engine keeps
+**5 listings active at all times** (`max_listings`): it counts your active listings
+and recreates listings until it's back up to 5, so a slot is never left
+empty while other players respond. For each free slot it targets
+a missing card (prioritizing **series close to completion**) and offers the
+lowest-rarity eligible duplicate (the "I give → I receive" rule,
+preserving valuable cards). With `fulfill_others = true`, it also fulfills
+others' listings that offer one of your missing cards when you have a duplicate to
+give. Disabled by default: these actions commit your cards and affect other
+real players.
 
 ## Installation
 
@@ -52,162 +52,153 @@ pip install -r requirements.txt
 cp config.example.toml config.toml
 ```
 
-Puis ouvre `config.toml` et colle la valeur de ton cookie **`wtcg_session`** dans
-`api.session_cookie` (DevTools → onglet Réseau → une requête vers wikitcg.net →
-en-tête `Cookie`, ou onglet Stockage → Cookies).
+Then open `config.toml` and paste the value of your **`wtcg_session`** cookie into
+`api.session_cookie` (DevTools → Network tab → a request to wikitcg.net →
+`Cookie` header, or Storage tab → Cookies).
 
-**Cookies supplémentaires** (ex. `cf_clearance` de Cloudflare) : renseigne
-`api.extra_cookies` au format `"nom1=val1; nom2=val2"`. ⚠️ `cf_clearance` est lié à
-ton User-Agent — garde le même `api.user_agent` que le navigateur d'où vient le cookie.
+**Extra cookies** (e.g. Cloudflare's `cf_clearance`): set
+`api.extra_cookies` in the format `"name1=val1; name2=val2"`. ⚠️ `cf_clearance` is tied to
+your User-Agent — keep the same `api.user_agent` as the browser the cookie came from.
 
-> 🔒 **Sécurité** : `config.toml` contient ton cookie (un JWT avec ton e-mail). Il est dans
-> `.gitignore` (ne pas versionner). Tu peux aussi fournir le cookie via la variable
-> d'environnement `WIKITCG_SESSION` (et `WIKITCG_EXTRA_COOKIES`), qui priment sur le TOML.
+> 🔒 **Security**: `config.toml` contains your cookie (a JWT with your email). It's in
+> `.gitignore` (don't commit it). You can also provide the cookie via the
+> `WIKITCG_SESSION` environment variable (and `WIKITCG_EXTRA_COOKIES`), which take precedence over the TOML.
 
-### Session & renouvellement du token
+### Session & token renewal
 
-Le cookie `wtcg_session` est un **JWT d'environ 14 jours**. wikitcg **n'expose aucun endpoint
-de refresh** (vérifié) et ne renvoie pas de cookie rafraîchi : on ne peut donc pas le « refaire »
-par requête. Le tableau de bord affiche donc une **pastille de session** (compte à rebours
-d'expiration) et, à l'approche de l'échéance ou en cas de `401`, un **bandeau** invite à coller un
-cookie frais. Clique la pastille **« session »** → colle le nouveau `wtcg_session` (re-connexion
-navigateur) → **effet immédiat sans redémarrage**, et c'est persisté. (Endpoint : `POST /api/auth/cookie`.)
+The `wtcg_session` cookie is a **JWT lasting about 14 days**. wikitcg **exposes no refresh
+endpoint** (verified) and doesn't return a refreshed cookie: it therefore can't be "remade"
+via a request. The dashboard thus shows a **session badge** (expiry
+countdown) and, as the deadline approaches or on a `401`, a **banner** prompts you to paste a
+fresh cookie. Click the **"session"** badge → paste the new `wtcg_session` (browser
+re-login) → **immediate effect with no restart**, and it's persisted. (Endpoint: `POST /api/auth/cookie`.)
 
-La synchro est **rapide et progressive** : les 12 séries s'affichent tout de suite
-(chiffres de `/api/collection`), puis s'affinent au fil du chargement des détails.
+Syncing is **fast and progressive**: the 12 series show up right away
+(figures from `/api/collection`), then refine as the details load.
 
-## Lancement
+## Running
 
 ```bash
 python run.py
 ```
 
-Puis ouvre **http://127.0.0.1:8765**. Le bouton **Démarrer** lance la boucle
-(sync → ouvre → recycle → attend → recommence), **Stop** l'arrête, **Sync**
-resynchronise la collection sans rien ouvrir.
+Then open **http://127.0.0.1:8765**. The **Start** button launches the loop
+(sync → open → recycle → wait → repeat), **Stop** stops it, **Sync**
+resyncs the collection without opening anything.
 
-## Multi-comptes (farm séquentiel — `run_multi.py`)
+## Multi-account (sequential farm — `run_multi.py`)
 
-Pour accumuler des doublons à **échanger contre les LR manquantes**, tu peux faire tourner
-plusieurs comptes, chacun cantonné à **UNE série**. Copie `accounts.example.toml` en
-`accounts.toml` et renseigne, par compte, son `session_cookie`, son `extra_cookies`
-(`cf_clearance`) et la `series` à farmer. Puis :
+To accumulate duplicates to **trade for the missing LRs**, you can run
+several accounts, each confined to **ONE series**. Copy `accounts.example.toml` to
+`accounts.toml` and provide, per account, its `session_cookie`, its `extra_cookies`
+(`cf_clearance`) and the `series` to farm. Then:
 
 ```bash
 python run_multi.py
 ```
 
-**Suivi web** : pendant que ça tourne, une page read-only est servie sur
-**http://127.0.0.1:8766** (port distinct du serveur mono-compte 8765) — statut de chaque
-compte, série, niveau, encre, packs dispo, packs ouverts et exemplaires recyclés, le compte
-actif surligné, rafraîchie toutes les 2 s. Désactivable via `[runner] web = false`
-(`web_host` / `web_port` réglables).
+**Web tracking**: while it runs, a read-only page is served at
+**http://127.0.0.1:8766** (a separate port from the single-account server's 8765) — the status of each
+account, its series, level, ink, available packs, packs opened and copies recycled, the active
+account highlighted, refreshed every 2 s. Can be disabled via `[runner] web = false`
+(`web_host` / `web_port` are configurable).
 
-Fonctionnement : **séquentiel** (un compte actif à la fois). Le compte ouvre sa série et
-recycle ses doublons pour racheter des packs ; on l'exploite **à fond** puis on **bascule au
-suivant** dès qu'il n'a plus rien à faire (plus de packs gratuits, encre insuffisante et
-recyclage **plafonné** par le quota journalier ~200/j → `429`, géré automatiquement). On boucle
-sur la liste ; quand **tous** les comptes sont épuisés, pause `runner.idle_cycle_minutes` puis
-nouveau tour (le temps que les packs gratuits / le quota se régénèrent). Les réglages communs
-(throttle, recyclage, `recycle_quota_cooldown_minutes`…) viennent de `config.toml` ; chaque
-compte a sa **propre base** `wikitcg_<nom>.db`. La marketplace reste **désactivée** ici
-(open + recycle) : tu réalises les échanges à la main. `accounts.toml` est gitignoré (secrets).
+How it works: **sequential** (one active account at a time). The account opens its series and
+recycles its duplicates to buy more packs; we exploit it **to the fullest** then **switch to the
+next one** as soon as it has nothing left to do (no more free packs, insufficient ink, and
+recycling **capped** by the daily quota ~200/day → `429`, handled automatically). We loop
+over the list; when **all** accounts are exhausted, it pauses for `runner.idle_cycle_minutes` then
+starts a new round (giving free packs / the quota time to regenerate). The shared settings
+(throttle, recycling, `recycle_quota_cooldown_minutes`…) come from `config.toml`; each
+account has its **own database** `wikitcg_<name>.db`. The marketplace stays **disabled** here
+(open + recycle): you make trades by hand. `accounts.toml` is gitignored (secrets).
 
-## Réglages utiles (`config.toml`)
+## Useful settings (`config.toml`)
 
-- `throttle.min_interval` / `jitter` — espacement (variable) entre requêtes.
-- `throttle.cooldown_every` / `cooldown_seconds` — grande pause périodique (anti-429 en rafale).
-- `engine.keep_spares` — doublons **conservés** par rareté comme matière d'échange (phase 2).
-  Les commons (`C`) ne s'échangent pas → `C = 0` (tout le surplus est recyclé).
-- `engine.on_empty` — `wait` (attendre la régén) ou `stop` quand les packs gratuits sont épuisés.
-- `engine.buy_packs_with_ink` — achète un restock à l'encre quand les packs sont épuisés
-  (recycle les doublons d'abord si l'encre manque). `engine.min_ink_reserve` garde une réserve.
-- `engine.recycle_mode` — `surplus` (vide tout le surplus, max d'encre) ou `on_demand`
-  (recycle le minimum pour financer un restock, en sacrifiant les cartes les moins chères →
-  préserve les cartes rares pour l'échange).
-- `engine.mystery_pack` — ouvre le **pack mystery** (premium, raretés hautes) dès qu'il est
-  disponible (~1×/6h, `engine.mystery_interval_hours`). S'ouvre comme un pack normal.
-- `engine.autostart` — démarre la boucle automatiquement au lancement du serveur.
+- `throttle.min_interval` / `jitter` — (variable) spacing between requests.
+- `throttle.cooldown_every` / `cooldown_seconds` — periodic long pause (anti-429 on bursts).
+- `engine.keep_spares` — duplicates **kept** per rarity as trade material (phase 2).
+  Commons (`C`) aren't traded → `C = 0` (all the surplus is recycled).
+- `engine.on_empty` — `wait` (wait for regen) or `stop` when free packs are exhausted.
+- `engine.buy_packs_with_ink` — buys an ink restock when packs are exhausted
+  (recycles duplicates first if ink is short). `engine.min_ink_reserve` keeps a reserve.
+- `engine.recycle_mode` — `surplus` (empties all the surplus, max ink) or `on_demand`
+  (recycles the minimum to fund a restock, sacrificing the cheapest cards →
+  preserves rare cards for trading).
+- `engine.mystery_pack` — opens the **mystery pack** (premium, high rarities) as soon as it's
+  available (~1×/6h, `engine.mystery_interval_hours`). Opens like a normal pack.
+- `engine.autostart` — starts the loop automatically when the server launches.
 
-> Priorité : tant qu'on peut **ouvrir un pack ou acheter un restock**, on le fait. La marketplace
-> (§ ci-dessous) n'interrompt jamais l'ouverture — c'est un outil **complémentaire** en parallèle.
+> Priority: as long as we can **open a pack or buy a restock**, we do. The marketplace
+> (see below) never interrupts opening — it's a **complementary** tool running in parallel.
 
-Ces réglages sont aussi modifiables **en direct depuis le tableau de bord** — effet immédiat à
-l'itération suivante, persistés (survivent au redémarrage). Le bouton **« Réinitialiser »** oublie
-les réglages UI et revient à `config.toml` (`POST /api/config/reset`).
+These settings are also editable **live from the dashboard** — they take effect immediately on the
+next iteration, persisted (they survive restart). The **"Reset"** button forgets
+the UI settings and reverts to `config.toml` (`POST /api/config/reset`).
 
 ## Tests
 
-**54 tests** sans réseau : fonctions pures (stratégie, marketplace, parsing, JWT), couche SQLite,
-**moteur** (via un `FakeClient`) et **client HTTP** (via `httpx.MockTransport` — parsing des
-doublons, retries 429/5xx, 401) :
+**66 tests** with no network: pure functions (strategy, marketplace, parsing, JWT), the SQLite layer,
+the **engine** (via a `FakeClient`) and the **HTTP client** (via `httpx.MockTransport` — duplicate
+parsing, 429/5xx retries, 401):
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-## Logique de décision (booster vs échange)
+## Decision logic (booster vs trade)
 
-Pas de seuil codé en dur. Pour chaque carte manquante, le coût **espéré en boosters**
-≈ `1 / (P(rareté) × part de cette rareté encore manquante)`. Au début d'une série,
-beaucoup de manquantes communes → coût faible → **on ouvre**. En fin de série, il ne
-reste que des raretés hautes et rares → le coût espéré explose (collectionneur de
-coupons) → **on bascule vers l'échange ciblé**. Le point de bascule émerge donc du
-croisement coût-packs / coût-échange (voir `app/strategy.py`). Les **taux de tirage**
-n'étant pas connus, ils sont **appris empiriquement** à partir des ouvertures
-journalisées (`pull_log`).
+No hard-coded threshold. For each missing card, the **expected cost in boosters**
+≈ `1 / (P(rarity) × share of that rarity still missing)`. Early in a series,
+lots of common cards are missing → low cost → **we open**. Late in a series, only
+the high and rare rarities are left → the expected cost explodes (coupon
+collector) → **we switch to targeted trading**. The switch point thus emerges from the
+booster-cost / trade-cost crossover (see `app/strategy.py`). Since the **pull rates**
+aren't known, they're **learned empirically** from the logged
+openings (`pull_log`).
 
-## Recyclage
+## Recycling
 
-Le recyclage lit `GET /api/cards/duplicates` — une ligne par type de carte
-(`{cardId, seriesId, rarity, copies, pullIds:[…]}`, chaque `pullId` étant l'id d'un
-exemplaire) — puis recycle le surplus (`copies - 1 - keep_spares[rareté]`) via
-`POST /api/cards/recycle {"cardIds": [pullId…]}` (réponse `{recycled, inkEarned, newBalance}`).
-Le parseur reste **tolérant** (autodétection des champs, override possible via
-`[recycle] id_field / type_field / quantity_field`) et **fail-safe** : si aucun exemplaire
-n'est identifié, il **ne recycle rien** et l'indique dans le journal.
+Recycling reads `GET /api/cards/duplicates` — one row per card type
+(`{cardId, seriesId, rarity, copies, pullIds:[…]}`, each `pullId` being the id of one
+copy) — then recycles the surplus (`copies - 1 - keep_spares[rarity]`) via
+`POST /api/cards/recycle {"cardIds": [pullId…]}` (response `{recycled, inkEarned, newBalance}`).
+The parser stays **tolerant** (auto-detects fields, can be overridden via
+`[recycle] id_field / type_field / quantity_field`) and **fail-safe**: if no copy
+can be identified, it **recycles nothing** and notes it in the log.
 
 ## Structure
 
 ```
 app/
-  config.py        chargement TOML + défauts
-  api_client.py    client async : throttle, backoff, taxonomie d'erreurs, endpoints
-  db.py            SQLite (catalogue, inventaire, logs, analytics)
-  strategy.py      sélection de série, politique de recyclage, logique d'échange (phase 2)
-  engine.py        boucle d'automatisation (sync / open / recycle)
-  events.py        bus pub/sub -> WebSocket
-  series_seed.py   noms + tailles des 12 séries
-  web.py           FastAPI : REST + WebSocket + dashboard + réglages live
-  orchestrator.py  farm multi-comptes séquentiel (une série par compte, bascule à l'épuisement)
-  orchestrator_web.py  page web de suivi du farm multi-comptes (port 8766, read-only)
-  logging_conf.py  logs console + fichier (UTF-8, niveau réglable)
-frontend/index.html  tableau de bord
-docs/
-  LOGIQUE.md       logique & raisonnements du moteur (à lire pour comprendre les décisions)
-  AMELIORATIONS.md recherche d'améliorations priorisée
-run.py               point d'entrée (serveur web mono-compte)
-run_multi.py         point d'entrée (farm multi-comptes : lit accounts.toml)
-accounts.example.toml  modèle de liste de comptes (à copier en accounts.toml)
+  config.py        TOML loading + defaults
+  api_client.py    async client: throttle, backoff, error taxonomy, endpoints
+  db.py            SQLite (catalog, inventory, logs, analytics)
+  strategy.py      series selection, recycling policy, trade logic (phase 2)
+  engine.py        automation loop (sync / open / recycle)
+  events.py        pub/sub bus -> WebSocket
+  series_seed.py   names + sizes of the 12 series
+  web.py           FastAPI: REST + WebSocket + dashboard + live settings
+  orchestrator.py  sequential multi-account farm (one series per account, switch on exhaustion)
+  orchestrator_web.py  web page tracking the multi-account farm (port 8766, read-only)
+  logging_conf.py  console + file logs (UTF-8, adjustable level)
+frontend/index.html  dashboard
+run.py               entry point (single-account web server)
+run_multi.py         entry point (multi-account farm: reads accounts.toml)
+accounts.example.toml  template account list (copy to accounts.toml)
 ```
 
-## Documentation
+## Logging (`[logging]`)
 
-- **[docs/LOGIQUE.md](docs/LOGIQUE.md)** — comment le programme décide (boucle, choix de série,
-  recyclage, achat à l'encre, bascule booster↔échange, marketplace) + contrats d'API réels.
-- **[docs/AMELIORATIONS.md](docs/AMELIORATIONS.md)** — pistes d'amélioration classées par priorité.
+Console logs + a rotating file `wikitcg.log` (UTF-8). `level` sets the detail
+(`DEBUG`/`INFO`/`WARNING`/`ERROR`); `log_requests = true` traces **every API request**
+(method, route, status, duration) — invaluable for diagnosing an error (failures are
+logged with the route and the response body).
 
-## Journalisation (`[logging]`)
+## Error handling (extensible)
 
-Logs console + fichier rotatif `wikitcg.log` (UTF-8). `level` règle le détail
-(`DEBUG`/`INFO`/`WARNING`/`ERROR`) ; `log_requests = true` trace **chaque requête API**
-(méthode, route, statut, durée) — précieux pour diagnostiquer une erreur (les échecs sont
-journalisés avec la route et le corps de la réponse).
-
-## Gestion d'erreurs (extensible)
-
-`api_client._request` centralise les retries : 429 → backoff (respecte `Retry-After`),
-5xx & erreurs réseau → backoff exponentiel + jitter, 401/403 → `AuthError` (arrêt, pas
-de retry), autres 4xx → `ApiError`. La boucle moteur attrape tout et ne crashe jamais
-l'appli ; chaque incident est journalisé (fichier + UI). Ajouter une règle = un cas dans
-`_request` ; ajouter un endpoint = une petite méthode.
+`api_client._request` centralizes retries: 429 → backoff (honors `Retry-After`),
+5xx & network errors → exponential backoff + jitter, 401/403 → `AuthError` (stop, no
+retry), other 4xx → `ApiError`. The engine loop catches everything and never crashes
+the app; each incident is logged (file + UI). Adding a rule = a case in
+`_request`; adding an endpoint = a small method.

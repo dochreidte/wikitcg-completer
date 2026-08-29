@@ -1,17 +1,17 @@
-"""Persistance SQLite.
+"""SQLite persistence.
 
-Tables :
-  series              catalogue des séries (couleurs, taille du set)
-  catalog             toutes les cartes d'une série (le « set » complet)
-  inventory           mes cartes (type + quantité) — base du calcul de complétion
-  pull_log            chaque carte tirée (pour apprendre les taux empiriquement)
-  recycle_log         chaque recyclage réussi (pour apprendre la valeur d'encre par rareté)
-  recycle_failures    exemplaires non recyclables (500) + heure de réessai (persistant)
-  actions             historique horodaté de toutes les actions (UI / audit)
-  resource_snapshots  encre / packs / niveau dans le temps
-  kv                  divers (clé/valeur)
+Tables:
+  series              series catalog (colors, set size)
+  catalog             every card of a series (the full "set")
+  inventory           my cards (type + quantity) — basis of the completion calculation
+  pull_log            every card pulled (to learn rates empirically)
+  recycle_log         every successful recycle (to learn ink value per rarity)
+  recycle_failures    non-recyclable copies (500) + retry time (persistent)
+  actions             timestamped history of every action (UI / audit)
+  resource_snapshots  ink / packs / level over time
+  kv                  miscellaneous (key/value)
 
-La complétion d'une série = nb de lignes inventory(series) / catalog count(series).
+Series completion = number of inventory(series) rows / catalog count(series).
 """
 from __future__ import annotations
 
@@ -67,15 +67,15 @@ CREATE TABLE IF NOT EXISTS recycle_log (
     rarity       TEXT,
     ink_earned   INTEGER
 );
--- Mémoire des exemplaires NON recyclables (500) : verrouillés côté serveur d'une manière non
--- exposée par l'API. Persistée pour ne pas re-tenter à chaque redémarrage avant `retry_at`.
+-- Memory of NON-recyclable copies (500): locked server-side in a way the API does not
+-- expose. Persisted so we don't retry on every restart before `retry_at`.
 CREATE TABLE IF NOT EXISTS recycle_failures (
     pull_id    TEXT PRIMARY KEY,
     card_id    TEXT,
     rarity     TEXT,
     fail_count INTEGER DEFAULT 1,
-    retry_at   INTEGER,      -- epoch (s) du prochain essai autorisé
-    last_ts    INTEGER       -- epoch (s) du dernier échec
+    retry_at   INTEGER,      -- epoch (s) of the next allowed attempt
+    last_ts    INTEGER       -- epoch (s) of the last failure
 );
 CREATE TABLE IF NOT EXISTS actions (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,7 +112,7 @@ class Database:
         self._lock = threading.Lock()
         with self._lock:
             self._conn.executescript(SCHEMA)
-            # migrations légères pour les BDD déjà créées
+            # lightweight migrations for already-created databases
             for col in ("owned_hint INTEGER DEFAULT 0", "pulls_hint INTEGER DEFAULT 0"):
                 try:
                     self._conn.execute(f"ALTER TABLE series ADD COLUMN {col}")
@@ -137,12 +137,12 @@ class Database:
             return self._conn.execute(sql, params).fetchall()
 
     def _scalar(self, sql: str, params: tuple = (), default: Any = 0) -> Any:
-        """Première colonne de la première ligne d'une requête d'agrégat (COUNT/SUM…).
-        Un agrégat renvoie toujours une ligne ; `default` ne sert qu'aux requêtes vides."""
+        """First column of the first row of an aggregate query (COUNT/SUM...).
+        An aggregate always returns a row; `default` only matters for empty queries."""
         rows = self._query(sql, params)
         return rows[0][0] if rows else default
 
-    # ---------- catalogue & séries ----------
+    # ---------- catalog & series ----------
     def upsert_series(self, sid: str, name: str, primary: str, accent: str, set_size: int) -> None:
         self._exec(
             """INSERT INTO series(series_id,name,primary_color,accent_color,set_size,last_synced)
@@ -155,8 +155,8 @@ class Database:
         )
 
     def set_collection_hint(self, sid: str, owned: int | None, pulls: int | None) -> None:
-        """Stocke owned/total_pulls issus de /api/collection pour afficher la
-        progression immédiatement, avant le chargement du détail (inventaire)."""
+        """Store owned/total_pulls from /api/collection so progress can be shown
+        immediately, before the detail (inventory) loads."""
         self._exec("UPDATE series SET owned_hint=?, pulls_hint=? WHERE series_id=?",
                    (owned or 0, pulls or 0, sid))
 
@@ -176,7 +176,7 @@ class Database:
     def known_series_ids(self) -> list[str]:
         return [r["series_id"] for r in self._query("SELECT series_id FROM series")]
 
-    # ---------- inventaire ----------
+    # ---------- inventory ----------
     def replace_inventory(self, sid: str, items: list[dict]) -> None:
         """items: [{card_id, rarity, quantity, first_pulled}]"""
         ts = now_ms()
@@ -191,7 +191,7 @@ class Database:
             self._conn.commit()
 
     def bump_inventory(self, sid: str, card_id: str, rarity: str) -> bool:
-        """Incrémente (ou crée) une carte. Renvoie True si c'était une NOUVELLE carte."""
+        """Increment (or create) a card. Returns True if it was a NEW card."""
         ts = now_ms()
         with self._lock:
             row = self._conn.execute(
@@ -214,7 +214,7 @@ class Database:
         return self._scalar("SELECT COUNT(*) FROM inventory WHERE series_id=?", (sid,))
 
     def duplicates(self, sid: str) -> list[sqlite3.Row]:
-        """Cartes de la série avec quantity > 1."""
+        """Cards of the series with quantity > 1."""
         return self._query(
             "SELECT card_id, rarity, quantity FROM inventory WHERE series_id=? AND quantity>1",
             (sid,))
@@ -224,7 +224,7 @@ class Database:
                    "WHERE series_id=? AND card_id=?", (by, now_ms(), sid, card_id))
 
     def missing_cards(self, sid: str) -> list[dict]:
-        """Cartes du catalogue de la série que je ne possède PAS encore."""
+        """Catalog cards of the series that I do NOT own yet."""
         rows = self._query(
             "SELECT c.card_id, c.rarity, c.title, c.card_number FROM catalog c "
             "LEFT JOIN inventory i ON i.series_id=c.series_id AND i.card_id=c.card_id "
@@ -233,15 +233,15 @@ class Database:
                  "title": r["title"], "card_number": r["card_number"]} for r in rows]
 
     def missing_card_ids(self) -> set[str]:
-        """Tous les card_id du catalogue absents de l'inventaire, toutes séries — une requête
-        (évite un appel à missing_cards par série)."""
+        """All catalog card_ids absent from inventory, across all series — one query
+        (avoids one missing_cards call per series)."""
         return {r["card_id"] for r in self._query(
             "SELECT c.card_id FROM catalog c "
             "LEFT JOIN inventory i ON i.series_id=c.series_id AND i.card_id=c.card_id "
             "WHERE i.card_id IS NULL")}
 
     def missing_cards_grouped(self) -> dict[str, list[dict]]:
-        """Cartes manquantes regroupées par série, toutes séries en une seule requête."""
+        """Missing cards grouped by series, all series in a single query."""
         out: dict[str, list[dict]] = {}
         for r in self._query(
                 "SELECT c.series_id, c.card_id, c.rarity, c.title, c.card_number FROM catalog c "
@@ -253,8 +253,8 @@ class Database:
         return out
 
     def missing_by_rarity(self) -> dict[str, int]:
-        """Nombre de cartes MANQUANTES par rareté, toutes séries confondues (catalogue - inventaire).
-        Sert au recyclage « réserve = nb de manquantes par rareté »."""
+        """Number of MISSING cards per rarity, across all series (catalog - inventory).
+        Used by the "reserve = number of missing per rarity" recycle mode."""
         rows = self._query(
             "SELECT c.rarity AS rarity, COUNT(*) AS n FROM catalog c "
             "LEFT JOIN inventory i ON i.series_id=c.series_id AND i.card_id=c.card_id "
@@ -262,7 +262,7 @@ class Database:
         return {r["rarity"]: r["n"] for r in rows if r["rarity"]}
 
     def rarity_breakdown(self, sid: str) -> list[dict]:
-        """Possédées vs total du set, par rareté (du plus rare au plus commun)."""
+        """Owned vs total of the set, per rarity (rarest to most common)."""
         cat = self._query("SELECT rarity, COUNT(*) n FROM catalog WHERE series_id=? GROUP BY rarity", (sid,))
         own = self._query(
             "SELECT i.rarity, COUNT(*) n FROM inventory i "
@@ -274,13 +274,13 @@ class Database:
                 for r in strategy.RARITY_ORDER_DESC if totals.get(r, 0)]
 
     def all_duplicates(self) -> list[dict]:
-        """Toutes mes cartes en plusieurs exemplaires (toutes séries)."""
+        """All my cards held in multiple copies (all series)."""
         rows = self._query(
             "SELECT series_id, card_id, rarity, quantity FROM inventory WHERE quantity>1")
         return [dict(r) for r in rows]
 
     def owns_card(self, card_id: str) -> bool:
-        """Vrai si je possède au moins un exemplaire de ce type de carte (id global wiki-…)."""
+        """True if I own at least one copy of this card type (global wiki-... id)."""
         rows = self._query(
             "SELECT 1 FROM inventory WHERE card_id=? AND quantity>0 LIMIT 1", (card_id,))
         return bool(rows)
@@ -294,13 +294,13 @@ class Database:
         self._exec("INSERT INTO recycle_log(ts,instance_id,card_id,rarity,ink_earned) "
                    "VALUES(?,?,?,?,?)", (now_ms(), instance_id, card_id, rarity, ink))
 
-    # ---------- mémoire des échecs de recyclage (exemplaires 500) ----------
+    # ---------- memory of recycle failures (500 copies) ----------
     def mark_recycle_failure(self, pull_id: str, card_id: str, rarity: str,
                              base_seconds: float, ts: float, max_mult: int = 8) -> float:
-        """Mémorise (persistant) un exemplaire non recyclable, avec un délai de réessai
-        CROISSANT selon le nombre d'échecs : retry_at = ts + base_seconds × min(fail_count, max_mult).
-        Une carte durablement verrouillée est ainsi re-tentée de moins en moins souvent.
-        Renvoie le `retry_at` (epoch s) calculé. `base_seconds`/`ts` en SECONDES."""
+        """Persistently remember a non-recyclable copy, with a GROWING retry delay based on
+        the failure count: retry_at = ts + base_seconds * min(fail_count, max_mult).
+        A persistently locked card is thus retried less and less often.
+        Returns the computed `retry_at` (epoch s). `base_seconds`/`ts` are in SECONDS."""
         row = self._query("SELECT fail_count FROM recycle_failures WHERE pull_id=?", (pull_id,))
         fc = (row[0]["fail_count"] + 1) if row else 1
         retry_at = int(ts + base_seconds * min(fc, max_mult))
@@ -314,7 +314,7 @@ class Database:
         return retry_at
 
     def recycle_skips(self) -> dict[str, float]:
-        """{pull_id: retry_at} — chargé au démarrage pour ne pas re-tenter avant l'heure."""
+        """{pull_id: retry_at} — loaded at startup so we don't retry before the due time."""
         return {r["pull_id"]: float(r["retry_at"] or 0)
                 for r in self._query("SELECT pull_id, retry_at FROM recycle_failures")}
 
@@ -359,7 +359,7 @@ class Database:
                    "(ts,ink,free_packs,paid_packs,level,xp) VALUES(?,?,?,?,?,?)",
                    (now_ms(), ink, free, paid, level, xp))
 
-    # ---------- analytics : taux & valeurs appris empiriquement ----------
+    # ---------- analytics: empirically-learned rates & values ----------
     def empirical_pull_rates(self) -> dict[str, float]:
         rows = self._query("SELECT rarity, COUNT(*) AS n FROM pull_log GROUP BY rarity")
         total = sum(r["n"] for r in rows) or 1
@@ -370,22 +370,22 @@ class Database:
             "SELECT rarity, AVG(ink_earned) AS v FROM recycle_log GROUP BY rarity")
         return {r["rarity"]: float(r["v"]) for r in rows if r["v"] is not None}
 
-    # ---------- stats pour les graphiques de l'UI ----------
+    # ---------- stats for the UI charts ----------
     def resource_history(self, limit: int = 120) -> list[dict]:
-        """Snapshots encre/packs/niveau dans le temps (ordre chronologique croissant)."""
+        """Ink/packs/level snapshots over time (chronological ascending order)."""
         rows = self._query(
             "SELECT ts,ink,free_packs,paid_packs,level,xp FROM resource_snapshots "
             "ORDER BY ts DESC LIMIT ?", (limit,))
         return [dict(r) for r in reversed(rows)]
 
     def pull_counts(self) -> list[dict]:
-        """Tirages par rareté : total + nouvelles cartes (was_new)."""
+        """Pulls per rarity: total + new cards (was_new)."""
         rows = self._query(
             "SELECT rarity, COUNT(*) n, COALESCE(SUM(was_new),0) nw FROM pull_log GROUP BY rarity")
         return [{"rarity": r["rarity"], "count": r["n"], "new": r["nw"]} for r in rows]
 
     def recycle_summary(self) -> dict:
-        """Bilan de recyclage : total exemplaires + encre, et détail par rareté."""
+        """Recycle summary: total copies + ink, and a per-rarity breakdown."""
         by = [{"rarity": r["rarity"], "count": r["n"], "ink": r["ink"] or 0}
               for r in self._query(
                   "SELECT rarity, COUNT(*) n, COALESCE(SUM(ink_earned),0) ink "
@@ -394,7 +394,7 @@ class Database:
             "SELECT COUNT(*) n, COALESCE(SUM(ink_earned),0) ink FROM recycle_log")[0]
         return {"total_count": tot["n"], "total_ink": tot["ink"], "by_rarity": by}
 
-    # ---------- état complet pour l'UI ----------
+    # ---------- full state for the UI ----------
     def progress_view(self) -> list[dict]:
         rows = self._query("""
             SELECT s.series_id, s.name, s.primary_color, s.accent_color, s.set_size,
@@ -407,7 +407,7 @@ class Database:
         out = []
         for r in rows:
             total = r["set_size"] or r["catalog_n"] or 0
-            # détail chargé -> chiffres exacts ; sinon -> indice de /api/collection
+            # detail loaded -> exact numbers; otherwise -> hint from /api/collection
             owned = r["inv_n"] if r["inv_n"] else (r["owned_hint"] or 0)
             pulls = r["inv_pulls"] if r["inv_n"] else (r["pulls_hint"] or 0)
             out.append({
@@ -427,7 +427,7 @@ class Database:
         self._exec("INSERT OR REPLACE INTO kv(key,value) VALUES(?,?)", (key, value))
 
     def get_json(self, key: str, default: Any = None) -> Any:
-        """Lit une valeur JSON du kv ; renvoie `default` si absente ou illisible."""
+        """Read a JSON value from kv; returns `default` if absent or unreadable."""
         raw = self.get_kv(key)
         if not raw:
             return default

@@ -1,10 +1,10 @@
-"""Point d'entrée multi-comptes : farm séquentiel d'une série par compte.
+"""Multi-account entry point: sequential farming of one series per account.
 
-Usage :  python run_multi.py  [chemin/vers/accounts.toml]
+Usage:  python run_multi.py  [path/to/accounts.toml]
 
-Lit la config globale (config.toml) pour les réglages communs (throttle, retry, recyclage…)
-puis accounts.toml pour la liste des comptes. Chaque compte ouvre SA série et recycle ;
-on bascule au compte suivant dès qu'il n'a plus rien à faire. Ctrl+C pour arrêter.
+Reads the global config (config.toml) for shared settings (throttle, retry, recycling...)
+then accounts.toml for the account list. Each account opens ITS series and recycles;
+we switch to the next account as soon as it has nothing left to do. Ctrl+C to stop.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def main() -> None:
     try:
         asyncio.run(run_from_config(accounts_path))
     except KeyboardInterrupt:
-        print("\nArrêt demandé (Ctrl+C).")
+        print("\nShutdown requested (Ctrl+C).")
 
 
 if __name__ == "__main__":

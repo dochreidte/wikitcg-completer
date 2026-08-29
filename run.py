@@ -1,4 +1,4 @@
-"""Point d'entrée : lance le serveur web.  Usage : python run.py"""
+"""Entry point: starts the web server.  Usage: python run.py"""
 from __future__ import annotations
 
 import uvicorn

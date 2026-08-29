@@ -1,12 +1,12 @@
-"""Volet marketplace du moteur (mixin de `Engine`).
+"""Marketplace part of the engine (mixin of `Engine`).
 
-Contrats vérifiés (frontend du site + captures HAR + test live create→cancel) :
+Verified contracts (site frontend + HAR captures + live create->cancel test):
   create  : POST /api/marketplace/create {offeredCardTypeId, offeredSeriesId,
-            wantedCardId, wantedSeriesId}  → 201 {success}
-  cancel  : POST /api/marketplace/{id}/cancel → 200 {success}
-  fulfill : POST /api/marketplace/{id}/fulfill (donne une carte à un autre joueur — irréversible).
-Désactivé par défaut : engage de vraies cartes et touche d'autres joueurs réels.
-Mode `dry_run` : journalise ce qui SERAIT fait, sans aucune écriture.
+            wantedCardId, wantedSeriesId}  -> 201 {success}
+  cancel  : POST /api/marketplace/{id}/cancel -> 200 {success}
+  fulfill : POST /api/marketplace/{id}/fulfill (gives a card to another player — irreversible).
+Disabled by default: commits real cards and affects other real players.
+`dry_run` mode: logs what WOULD be done, without any writes.
 """
 from __future__ import annotations
 
@@ -20,22 +20,22 @@ log = logging.getLogger("wikitcg.engine")
 
 
 class MarketMixin:
-    """Méthodes marketplace, mêlées à `Engine` (accès via self.client/db/settings/_emit…)."""
+    """Marketplace methods, mixed into `Engine` (access via self.client/db/settings/_emit...)."""
 
     async def marketplace_pass(self) -> int:
-        """Maintient le pool d'annonces. Renvoie le nombre d'ACTIONS effectuées
-        (annulations + honneurs + créations) — sert au backoff de la boucle marketplace."""
+        """Maintains the listing pool. Returns the number of ACTIONS performed
+        (cancels + fulfills + creates) — used by the marketplace loop's backoff."""
         cfg = self.settings.marketplace
         if not cfg.get("enabled"):
             return 0
-        dry = bool(cfg.get("dry_run"))      # mode validation : on journalise sans écrire
+        dry = bool(cfg.get("dry_run"))      # validation mode: log without writing
         cancels = fulfills = creates = 0
         mine = await self.client.marketplace_mine()
         listings = mine.get("listings") or []
 
-        # 0a) Annonces HONORÉES : j'ai reçu la carte voulue. On la crédite à l'inventaire (une
-        #     seule fois, suivi persistant) pour NE PAS recréer l'offre ensuite (bug « recrée une
-        #     annonce déjà honorée »). On décrémente aussi l'exemplaire offert (donné).
+        # 0a) FULFILLED listings: I received the wanted card. Credit it to the inventory (once,
+        #     persistent tracking) so we do NOT recreate the offer afterwards (bug "recreates an
+        #     already-fulfilled listing"). Also decrement the offered (given) copy.
         seen = set(self.db.get_json("fulfilled_seen", []) or [])
         changed = False
         for l in listings:
@@ -45,16 +45,16 @@ class MarketMixin:
                     self.db.bump_inventory(ws, wc, l.get("wanted_rarity"))
                 if l.get("offered_card_type") and l.get("offered_series"):
                     self.db.decrement_inventory(l["offered_series"], l["offered_card_type"], by=1)
-                self._emit("fulfill", f"Annonce honorée par un autre joueur : j'ai reçu {wc}",
+                self._emit("fulfill", f"Listing fulfilled by another player: I received {wc}",
                            detail=l)
                 seen.add(l["id"]); changed = True
         if changed:
-            self.db.set_json("fulfilled_seen", list(seen)[-1000:])  # borne la taille
+            self.db.set_json("fulfilled_seen", list(seen)[-1000:])  # cap the size
 
         active = [l for l in listings if l.get("status") == "active"]
 
-        # 0b) Balayage des annonces actives : annuler celles devenues INUTILES (carte voulue déjà
-        #     obtenue) OU TROP ANCIENNES (> max_listing_age_hours) — elles seront recréées fraîches.
+        # 0b) Sweep the active listings: cancel those that became POINTLESS (wanted card already
+        #     obtained) OR TOO OLD (> max_listing_age_hours) — they'll be recreated fresh.
         now_ms = time.time() * 1000
         max_age_ms = float(cfg.get("max_listing_age_hours", 24)) * 3600 * 1000
         still_active = []
@@ -63,31 +63,31 @@ class MarketMixin:
             owned = wc and self.db.owns_card(wc)
             too_old = max_age_ms > 0 and (now_ms - (l.get("created_at") or now_ms)) > max_age_ms
             if owned or too_old:
-                reason = "carte déjà obtenue" if owned else "annonce > 1 j (renouvellement)"
+                reason = "card already obtained" if owned else "listing > 1 day (renewal)"
                 if dry:
-                    self._emit("listing", f"[simulé] annulerait : {reason}", detail=l)
+                    self._emit("listing", f"[simulated] would cancel: {reason}", detail=l)
                     continue
                 try:
                     await self.client.marketplace_cancel(l["id"])
-                    self._emit("listing", f"Annonce annulée : {reason}", detail=l)
+                    self._emit("listing", f"Listing cancelled: {reason}", detail=l)
                     cancels += 1
                     continue
                 except ApiError as exc:
-                    self._emit("listing", f"Annulation refusée : {exc}", level="warn", detail=l)
+                    self._emit("listing", f"Cancellation rejected: {exc}", level="warn", detail=l)
             still_active.append(l)
         active = still_active
 
-        # Cache pour l'annulation immédiate côté ouverture (open_one).
+        # Cache for the immediate cancellation on the opening side (open_one).
         self._my_listings = [{"id": l["id"], "wanted_card_id": l.get("wanted_card_id")}
                              for l in active]
         self.resources["listings_active"] = len(active)
         self._push_resources()
 
-        # 1) Honorer les annonces utiles (acquisition instantanée), si activé.
+        # 1) Fulfill useful listings (instant acquisition), if enabled.
         if cfg.get("fulfill_others"):
             fulfills = await self._fulfill_useful(cfg)
 
-        # 2) Re-remplir jusqu'à max_listings annonces actives.
+        # 2) Refill up to max_listings active listings.
         max_listings = int(cfg.get("max_listings", 5))
         n_needed = max_listings - len(active)
         if n_needed > 0:
@@ -97,50 +97,50 @@ class MarketMixin:
                 committed[t] = committed.get(t, 0) + 1
             existing_wanted = {l.get("wanted_card_id") for l in active}
             progress = self.db.progress_view()
-            # Focalisation : ne cibler QUE les séries proches de la fin (≤ N cartes manquantes).
+            # Focus: target ONLY series close to completion (<= N missing cards).
             near = int(cfg.get("near_completion_max_missing", 0))
-            all_missing = self.db.missing_cards_grouped()   # une requête au lieu d'une par série
+            all_missing = self.db.missing_cards_grouped()   # one query instead of one per series
             missing_by_series = {p["series_id"]: all_missing.get(p["series_id"], [])
                                  for p in progress
                                  if p["missing"] > 0 and (near <= 0 or p["missing"] <= near)}
             dups = self.db.all_duplicates()
             plans = marketplace.plan_listings(missing_by_series, dups, committed, existing_wanted,
                                               n_needed, progress, cfg.get("prefer_near_completion", True))
-            # On offre un TYPE de carte (le serveur engage un exemplaire). Contrat vérifié.
+            # We offer a card TYPE (the server commits one copy). Verified contract.
             for pl in plans:
                 if dry:
                     self._emit("listing",
-                               f"[simulé] créerait : j'offre {pl['offered_type']} pour {pl['wanted_card']}",
+                               f"[simulated] would create: offering {pl['offered_type']} for {pl['wanted_card']}",
                                series_id=pl["wanted_series"], detail=pl)
                     continue
                 try:
                     await self.client.marketplace_create(pl["offered_type"], pl["offered_series"],
                                                          pl["wanted_card"], pl["wanted_series"])
                     self._emit("listing",
-                               f"Annonce créée : j'offre {pl['offered_type']} pour {pl['wanted_card']}",
+                               f"Listing created: offering {pl['offered_type']} for {pl['wanted_card']}",
                                series_id=pl["wanted_series"], detail=pl)
                     creates += 1
                 except ApiError as exc:
-                    self._emit("listing", f"Création d'annonce refusée : {exc}", level="warn", detail=pl)
+                    self._emit("listing", f"Listing creation rejected: {exc}", level="warn", detail=pl)
                     break
 
         actions = cancels + fulfills + creates
-        # Résumé de passe (suivi) — seulement s'il s'est passé quelque chose, sinon silencieux.
+        # Pass summary (tracking) — only if something happened, otherwise silent.
         if actions:
-            self._emit("market", f"Marketplace : {len(active)} active(s) · "
-                       f"{creates} créée(s), {fulfills} honorée(s), {cancels} annulée(s)",
+            self._emit("market", f"Marketplace: {len(active)} active · "
+                       f"{creates} created, {fulfills} fulfilled, {cancels} cancelled",
                        detail={"active": len(active), "created": creates,
                                "fulfilled": fulfills, "cancelled": cancels})
         return actions
 
     async def _fulfill_useful(self, cfg: dict) -> int:
-        """Honore les annonces d'autrui utiles. Renvoie le nombre d'échanges réalisés.
+        """Fulfill useful listings from other players. Returns the number of trades done.
 
-        Invariant (règle utilisateur) : on honore SEULEMENT si (a) je possède la carte demandée
-        en double ET (b) je ne possède pas déjà la carte offerte (cf. marketplace.plan_fulfillments)."""
+        Invariant (user rule): fulfill ONLY if (a) I own the wanted card as a duplicate AND
+        (b) I do not already own the offered card (cf. marketplace.plan_fulfillments)."""
         browse = await self.client.marketplace_browse()
         listings = browse.get("listings") or []
-        my_missing = self.db.missing_card_ids()   # toutes les manquantes en une requête
+        my_missing = self.db.missing_card_ids()   # all missing cards in one query
         spare_by_type = {d["card_id"]: d["quantity"] - 1 for d in self.db.all_duplicates()}
         deals = marketplace.plan_fulfillments(listings, my_missing, spare_by_type,
                                               int(cfg.get("fulfill_per_pass", 3)))
@@ -149,15 +149,15 @@ class MarketMixin:
         for deal in deals:
             if dry:
                 self._emit("fulfill",
-                           f"[simulé] honorerait : gagner {deal['gain_card']} contre {deal['give_card']}",
+                           f"[simulated] would fulfill: gain {deal['gain_card']} for {deal['give_card']}",
                            detail=deal)
                 continue
             try:
                 await self.client.marketplace_fulfill(deal["listing_id"])
                 self._emit("fulfill",
-                           f"Annonce honorée : je gagne {deal['gain_card']} contre {deal['give_card']}",
+                           f"Listing fulfilled: I gain {deal['gain_card']} for {deal['give_card']}",
                            detail=deal)
                 done += 1
             except ApiError as exc:
-                self._emit("fulfill", f"Échec d'honneur d'annonce : {exc}", level="warn", detail=deal)
+                self._emit("fulfill", f"Listing fulfillment failed: {exc}", level="warn", detail=deal)
         return done

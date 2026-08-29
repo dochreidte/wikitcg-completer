@@ -1,23 +1,22 @@
-"""Orchestrateur multi-comptes : farm séquentiel d'UNE série par compte.
+"""Multi-account orchestrator: sequential farm of ONE series per account.
 
-But : pour CHAQUE compte, ouvrir des packs de sa série (`engine.only_series`) et recycler
-les doublons pour racheter des packs à l'encre, EN BOUCLE, jusqu'à ce qu'on ne puisse plus
-ouvrir de pack à l'encre — puis passer au compte suivant. Les échanges (LR) sont gérés à la
-main, hors de ce programme.
+Goal: for EACH account, open packs of its series (`engine.only_series`) and recycle the
+duplicates to re-buy packs with ink, IN A LOOP, until no more packs can be bought with ink —
+then move on to the next account. Trades (LR) are handled by hand, outside this program.
 
-Modèle d'exécution : SÉQUENTIEL — un seul compte actif à la fois. Le moteur boucle
-open → (plus de packs) → recycle le MINIMUM (rare-first) pour financer → rachat d'un restock
-→ open … On recycle au plus juste, en sacrifiant d'abord les cartes les plus RARES (encre
-maximale par recyclage, quota journalier préservé) ; le surplus n'est PAS vidé. Quand il ne
-peut PLUS ouvrir de pack à l'encre (plus de packs gratuits ET encre insuffisante même après
-recyclage), il passe en statut `waiting` : c'est le signal de BASCULE vers le compte suivant.
-On boucle indéfiniment sur la liste ; quand un tour complet ne produit AUCUNE ouverture (tous
-les comptes épuisés), on patiente `idle_cycle_minutes` avant de recommencer (le temps que les
-packs gratuits / le quota de recyclage se régénèrent).
+Execution model: SEQUENTIAL — only one account active at a time. The engine loops
+open -> (no more packs) -> recycle the MINIMUM (rare-first) to fund -> re-buy a restock
+-> open ... We recycle as little as possible, sacrificing the RAREST cards first (maximum
+ink per recycle, daily quota preserved); the surplus is NOT drained. When it can NO LONGER
+open a pack with ink (no free packs AND not enough ink even after recycling), it goes to the
+`waiting` status: that is the SWITCH signal to the next account. We loop over the list
+indefinitely; when a full pass produces NO openings (all accounts exhausted), we wait
+`idle_cycle_minutes` before starting again (time for free packs / the recycle quota to
+regenerate).
 
-Pas de marketplace ici (open + recycle seulement) : les échanges restent manuels.
+No marketplace here (open + recycle only): trades remain manual.
 
-Lancement : `python run_multi.py`  (lit accounts.toml à la racine du projet).
+Run: `python run_multi.py`  (reads accounts.toml at the project root).
 """
 from __future__ import annotations
 
@@ -44,19 +43,19 @@ class Account:
     name: str
     series: str
     session_cookie: str
-    extra_cookies: str = ""        # ex. "cf_clearance=..."
-    mystery: bool = False          # ouvrir aussi le pack mystery (autre pool) — défaut non
-    db_path: str = ""              # base SQLite dédiée (inventaire propre au compte)
+    extra_cookies: str = ""        # e.g. "cf_clearance=..."
+    mystery: bool = False          # also open the mystery pack (separate pool) — default no
+    db_path: str = ""              # dedicated SQLite database (per-account inventory)
 
 
 def _slug(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or "compte"
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or "account"
 
 
 def load_accounts(path: str = "accounts.toml") -> tuple[list[Account], dict]:
-    """Lit accounts.toml -> (liste de comptes valides, options [runner]).
+    """Read accounts.toml -> (list of valid accounts, [runner] options).
 
-    Forme attendue :
+    Expected shape:
         [runner]
         poll_seconds = 8.0
         idle_cycle_minutes = 30.0
@@ -67,7 +66,7 @@ def load_accounts(path: str = "accounts.toml") -> tuple[list[Account], dict]:
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(
-            f"{path} introuvable. Copie accounts.example.toml en accounts.toml et renseigne tes comptes.")
+            f"{path} not found. Copy accounts.example.toml to accounts.toml and fill in your accounts.")
     with open(p, "rb") as fh:
         data = tomllib.load(fh)
 
@@ -75,14 +74,14 @@ def load_accounts(path: str = "accounts.toml") -> tuple[list[Account], dict]:
     accounts: list[Account] = []
     seen: dict[str, int] = {}
     for i, raw in enumerate(data.get("account", []) or [], start=1):
-        name = str(raw.get("name") or f"compte{i}").strip()
+        name = str(raw.get("name") or f"account{i}").strip()
         series = str(raw.get("series") or "").strip()
         session = str(raw.get("session_cookie") or "").strip()
         if not series or not is_real_session(session):
-            log.warning("Compte « %s » ignoré : series et session_cookie sont obligatoires.", name)
+            log.warning("Account \"%s\" skipped: series and session_cookie are required.", name)
             continue
-        # Noms en double (copier-coller fréquent) : on NE jette PAS — on désambiguïse pour que
-        # chaque compte ait une base distincte (wikitcg_<slug>.db / <slug>-2.db…) et tourne quand même.
+        # Duplicate names (frequent copy-paste): we do NOT drop them — we disambiguate so each
+        # account gets a distinct database (wikitcg_<slug>.db / <slug>-2.db...) and still runs.
         slug = _slug(name)
         seen[slug] = seen.get(slug, 0) + 1
         uniq = slug if seen[slug] == 1 else f"{slug}-{seen[slug]}"
@@ -97,7 +96,7 @@ def load_accounts(path: str = "accounts.toml") -> tuple[list[Account], dict]:
 
 
 class MultiAccountRunner:
-    """Fait tourner les comptes l'un après l'autre (cf. en-tête de module)."""
+    """Runs the accounts one after another (see module header)."""
 
     def __init__(self, accounts: list[Account], base_settings: Settings, *,
                  poll_seconds: float = 8.0, idle_cycle_minutes: float = 30.0):
@@ -106,24 +105,24 @@ class MultiAccountRunner:
         self.poll = max(float(poll_seconds), 1.0)
         self.idle_cycle = max(float(idle_cycle_minutes), 0.0) * 60
         self.running = True
-        # Bascule MANUELLE (depuis la page de suivi) : _skip = on quitte le compte actif au
-        # prochain tick ; _goto = nom du compte à activer ensuite (None -> simplement le suivant).
+        # MANUAL switch (from the monitoring page): _skip = leave the active account on the next
+        # tick; _goto = name of the account to activate next (None -> simply the next one).
         self._skip = False
         self._goto: str | None = None
-        # État live pour la page de suivi (read-only).
-        self.active: str | None = None      # compte actuellement actif
-        self.cycle = 0                       # n° de tour sur la liste
+        # Live state for the monitoring page (read-only).
+        self.active: str | None = None      # currently active account
+        self.cycle = 0                       # pass number over the list
         self.started_at = time.time()
         self.stats: dict[str, dict] = {
-            a.name: {"series": a.series, "status": "en attente", "active": False,
+            a.name: {"series": a.series, "status": "pending", "active": False,
                      "opened": 0, "recycled": 0, "ink": None, "packs": None, "level": None}
             for a in accounts
         }
 
     # ------------------------------------------------------------------ #
     async def _sleep_poll(self) -> None:
-        """Dort jusqu'à `self.poll` s, mais se réveille presque tout de suite si une bascule
-        manuelle est demandée (pour que le bouton de la page de suivi réagisse vite)."""
+        """Sleep up to `self.poll` s, but wake almost immediately if a manual switch is
+        requested (so the monitoring page button reacts quickly)."""
         step = 0.5
         waited = 0.0
         while waited < self.poll and self.running and not self._skip:
@@ -131,78 +130,78 @@ class MultiAccountRunner:
             waited += step
 
     def _settings_for(self, acc: Account) -> Settings:
-        """Settings du compte : base globale + surcharges (cookies, série, garde-fous farm)."""
+        """Account settings: global base + overrides (cookies, series, farm guardrails)."""
         over = {
             "api": {"session_cookie": acc.session_cookie, "extra_cookies": acc.extra_cookies},
             "engine": {
-                "only_series": acc.series,        # n'ouvre QUE cette série
+                "only_series": acc.series,        # open ONLY this series
                 "mystery_pack": acc.mystery,
-                "buy_packs_with_ink": True,        # le farm rachète des packs avec l'encre recyclée
+                "buy_packs_with_ink": True,        # the farm re-buys packs with recycled ink
                 "auto_open": True, "auto_recycle": True,
-                # Boucle de farm la plus SERRÉE possible : on ouvre les packs, puis on recycle le
-                # STRICT MINIMUM (et rien de plus) pour financer le prochain restock, en sacrifiant
-                # d'abord les cartes les plus RARES (rare-first) → encre MAXIMALE par recyclage et
-                # quota journalier (~200/j) préservé. On rouvre le restock et on recommence :
-                # ouvrir → recycler le minimum → racheter → ouvrir.
-                # NB : le site ne vend QUE le restock complet (5 packs / 400 encre) — l'achat d'un
-                # pack à l'unité n'existe pas, donc l'unité de rachat de la boucle est 1 restock.
-                "recycle_mode": "on_demand",       # pas de vidage du surplus : recycle au besoin
-                "recycle_priority": "rare_first",  # recycle les + rares d'abord → max d'encre/carte
-                "on_empty": "wait",                # -> statut `waiting` = signal de bascule
+                # Tightest possible farm loop: open the packs, then recycle the STRICT MINIMUM
+                # (and no more) to fund the next restock, sacrificing the RAREST cards first
+                # (rare-first) -> MAXIMUM ink per recycle and daily quota (~200/day) preserved.
+                # We re-open the restock and start again: open -> recycle the minimum -> re-buy
+                # -> open.
+                # NB: the site only sells the full restock (5 packs / 400 ink) — buying a single
+                # pack does not exist, so the loop's re-buy unit is 1 restock.
+                "recycle_mode": "on_demand",       # no surplus draining: recycle as needed
+                "recycle_priority": "rare_first",  # recycle the rarest first -> max ink/card
+                "on_empty": "wait",                # -> `waiting` status = switch signal
                 "autostart": False,
             },
-            "marketplace": {"enabled": False},     # open + recycle seulement
+            "marketplace": {"enabled": False},     # open + recycle only
             "paths": {"database": acc.db_path, "log_file": self.base.paths["log_file"]},
         }
         return Settings(raw=_deep_merge(self.base.raw, over))
 
     async def _run_account(self, acc: Account) -> bool:
-        """Fait tourner un compte jusqu'à épuisement (statut `waiting`) ou erreur.
-        Renvoie True si le compte a ouvert au moins un pack pendant la visite."""
+        """Run an account until exhaustion (`waiting` status) or error.
+        Returns True if the account opened at least one pack during the visit."""
         settings = self._settings_for(acc)
         client = WikiTCGClient(settings)
         client.session_sink = lambda tok, n=acc.name: log.info(
-            "Cookie de session rafraîchi pour « %s » — pense à l'actualiser dans accounts.toml.", n)
+            "Session cookie refreshed for \"%s\" — remember to update it in accounts.toml.", n)
         db = Database(acc.db_path)
         engine = Engine(client, db, EventBus(), settings)
         st = self.stats[acc.name]
-        st.update(active=True, status="démarrage")
+        st.update(active=True, status="starting")
         self.active = acc.name
-        log.info("════ Compte « %s » → série %s (db=%s) ════", acc.name, acc.series, acc.db_path)
+        log.info("==== Account \"%s\" -> series %s (db=%s) ====", acc.name, acc.series, acc.db_path)
         engine.start()
 
-        def _refresh() -> None:   # recopie l'état du moteur dans les stats de suivi
+        def _refresh() -> None:   # copy the engine state into the monitoring stats
             r = engine.resources or {}
             st.update(status=engine.status, opened=engine.opened_total,
                       recycled=engine.recycled_total, ink=r.get("ink"),
                       packs=r.get("total_available"), level=r.get("level"))
 
         try:
-            # On laisse le moteur démarrer (sync) puis on surveille son statut. On bascule dès
-            # qu'il se met en attente (plus rien à faire) ou s'arrête (terminé / erreur cookie).
+            # Let the engine start (sync), then watch its status. We switch as soon as it goes
+            # to waiting (nothing left to do) or stops (finished / cookie error).
             while self.running and engine.running:
                 await self._sleep_poll()
                 _refresh()
                 if self._skip:
-                    log.info("Compte « %s » : bascule manuelle demandée — %d ouvert(s). %s",
+                    log.info("Account \"%s\": manual switch requested — %d opened. %s",
                              acc.name, engine.opened_total,
-                             f"Activation de « {self._goto} »." if self._goto
-                             else "Passage au compte suivant.")
+                             f"Activating \"{self._goto}\"." if self._goto
+                             else "Moving to the next account.")
                     break
                 if engine.status == "waiting":
-                    log.info("Compte « %s » : plus de pack ouvrable à l'encre (packs gratuits "
-                             "épuisés + encre insuffisante même après recyclage) — %d ouvert(s). "
-                             "Passage au compte suivant.", acc.name, engine.opened_total)
+                    log.info("Account \"%s\": no more pack buyable with ink (free packs exhausted "
+                             "+ not enough ink even after recycling) — %d opened. "
+                             "Moving to the next account.", acc.name, engine.opened_total)
                     break
                 if engine.status == "error":
-                    log.warning("Compte « %s » en erreur (%s) — on passe au suivant.",
-                                acc.name, engine.auth_error or "voir logs")
+                    log.warning("Account \"%s\" in error (%s) — moving to the next.",
+                                acc.name, engine.auth_error or "see logs")
                     break
         finally:
             _refresh()
             st["active"] = False
-            st["status"] = ("erreur" if engine.status == "error"
-                            else "épuisé" if engine.status == "waiting" else "arrêté")
+            st["status"] = ("error" if engine.status == "error"
+                            else "exhausted" if engine.status == "waiting" else "stopped")
             if self.active == acc.name:
                 self.active = None
             await engine.stop()
@@ -212,16 +211,16 @@ class MultiAccountRunner:
 
     async def run(self) -> None:
         if not self.accounts:
-            log.error("Aucun compte valide dans accounts.toml — rien à faire.")
+            log.error("No valid account in accounts.toml — nothing to do.")
             return
-        log.info("Orchestrateur multi-comptes : %d compte(s) — %s",
+        log.info("Multi-account orchestrator: %d account(s) — %s",
                  len(self.accounts), ", ".join(f"{a.name}:{a.series}" for a in self.accounts))
         while self.running:
             self.cycle += 1
             worked_any = False
             idx = 0
             while idx < len(self.accounts) and self.running:
-                # Bascule manuelle : si un compte a été explicitement choisi, on saute dessus.
+                # Manual switch: if an account was explicitly chosen, jump to it.
                 if self._goto is not None:
                     target, self._goto = self._goto, None
                     j = next((k for k, a in enumerate(self.accounts) if a.name == target), None)
@@ -233,40 +232,40 @@ class MultiAccountRunner:
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    log.exception("Erreur inattendue sur le compte « %s » — on continue.", acc.name)
-                self._skip = False  # demande de bascule consommée
-                # Si une cible a été posée pendant la visite, on la traite en tête de boucle
-                # (sans avancer) ; sinon on passe au compte suivant de la liste.
+                    log.exception("Unexpected error on account \"%s\" — continuing.", acc.name)
+                self._skip = False  # switch request consumed
+                # If a target was set during the visit, handle it at the top of the loop
+                # (without advancing); otherwise move to the next account in the list.
                 if self._goto is None:
                     idx += 1
             if not self.running:
                 break
-            # Tour complet sans aucune ouverture -> tous les comptes sont épuisés : on patiente
-            # (régénération des packs gratuits / réinitialisation du quota de recyclage).
+            # Full pass with no openings -> all accounts are exhausted: wait (regeneration of
+            # free packs / reset of the recycle quota).
             if not worked_any and self.idle_cycle > 0:
                 mins = int(self.idle_cycle / 60)
-                log.info("Tous les comptes sont épuisés — pause %d min avant un nouveau tour.", mins)
-                # Pause interruptible : une bascule manuelle (page de suivi) la coupe net.
+                log.info("All accounts are exhausted — pausing %d min before a new pass.", mins)
+                # Interruptible pause: a manual switch (monitoring page) cuts it short.
                 waited = 0.0
                 while waited < self.idle_cycle and self.running and not self._skip:
                     await asyncio.sleep(min(2.0, self.idle_cycle - waited))
                     waited += 2.0
-                # `_skip` a servi à couper la pause (aucun compte actif à quitter) : on le
-                # consomme ici pour ne pas sauter d'emblée le 1er compte du tour suivant.
-                # `_goto` est conservé pour que le saut vers le compte choisi ait bien lieu.
+                # `_skip` was used to cut the pause (no active account to leave): we consume it
+                # here so we don't immediately skip the first account of the next pass.
+                # `_goto` is kept so the jump to the chosen account still happens.
                 self._skip = False
 
     def request_switch(self, account: str | None = None) -> dict:
-        """Demande une bascule MANUELLE (appelée par la page de suivi).
+        """Request a MANUAL switch (called by the monitoring page).
 
-        - `account` fourni  -> on quitte le compte actif puis on active CE compte.
-        - `account` None     -> on quitte le compte actif et on passe simplement au suivant.
-        Prise en compte au prochain tick de surveillance (≤ ~0,5 s)."""
+        - `account` given  -> leave the active account, then activate THAT account.
+        - `account` None   -> leave the active account and simply move to the next.
+        Taken into account on the next monitoring tick (<= ~0.5 s)."""
         if account is not None:
             account = account.strip()
             known = {a.name for a in self.accounts}
             if account and account not in known:
-                return {"ok": False, "error": f"compte inconnu : {account}"}
+                return {"ok": False, "error": f"unknown account: {account}"}
             self._goto = account or None
         self._skip = True
         return {"ok": True, "goto": self._goto, "from": self.active}
@@ -275,7 +274,7 @@ class MultiAccountRunner:
         self.running = False
 
     def status_snapshot(self) -> dict:
-        """État courant pour la page de suivi (sérialisable JSON)."""
+        """Current state for the monitoring page (JSON-serializable)."""
         return {
             "active": self.active,
             "cycle": self.cycle,
@@ -287,7 +286,7 @@ class MultiAccountRunner:
 
 
 async def run_from_config(accounts_path: str = "accounts.toml") -> None:
-    """Charge la config globale + accounts.toml et lance l'orchestrateur (+ page de suivi)."""
+    """Load the global config + accounts.toml and start the orchestrator (+ monitoring page)."""
     base = load_settings()
     accounts, runner = load_accounts(accounts_path)
     orch = MultiAccountRunner(
@@ -298,13 +297,14 @@ async def run_from_config(accounts_path: str = "accounts.toml") -> None:
     if not bool(runner.get("web", True)):
         await orch.run()
         return
-    # Page de suivi (read-only) en parallèle, sur un port distinct du serveur mono-compte (8765).
+    # Monitoring page (read-only) in parallel, on a port distinct from the single-account
+    # server (8765).
     import uvicorn
     from .orchestrator_web import make_app
     host = str(runner.get("web_host", "127.0.0.1"))
     port = int(runner.get("web_port", 8766))
     server = uvicorn.Server(uvicorn.Config(make_app(orch), host=host, port=port, log_level="warning"))
-    log.info("Page de suivi multi-comptes : http://%s:%d", host, port)
+    log.info("Multi-account monitoring page: http://%s:%d", host, port)
     web_task = asyncio.create_task(server.serve())
     try:
         await orch.run()

@@ -1,4 +1,4 @@
-"""Chargement de la configuration TOML avec valeurs par défaut robustes."""
+"""TOML config loading with robust defaults."""
 from __future__ import annotations
 
 import copy
@@ -10,7 +10,7 @@ from pathlib import Path
 from .auth import is_real_session
 
 
-# ---- valeurs par défaut (utilisées si une clé manque dans le TOML) ----
+# ---- defaults (used when a key is missing from the TOML) ----
 _DEFAULTS: dict = {
     "api": {
         "base_url": "https://wikitcg.net",
@@ -32,32 +32,32 @@ _DEFAULTS: dict = {
     "engine": {
         "auto_open": True, "auto_recycle": True, "fetch_catalog": True, "resync_every": 5,
         "buy_packs_with_ink": False, "min_ink_reserve": 0,
-        "recycle_mode": "surplus",     # "surplus" (vider le surplus) | "on_demand" (financer les restocks)
-        "recycle_reserve_mode": "fixed",  # "fixed" (keep_spares) | "missing" (garder autant que de manquantes/rareté)
-        "recycle_priority": "common_first",  # ordre de recyclage : "common_first" (préserve les rares) | "rare_first" (max d'encre — farm pur)
-        "only_series": "",             # "" = stratégie multi-séries ; sinon n'ouvre QUE cette série (orchestrateur multi-comptes)
-        "mystery_pack": True,          # ouvrir le pack mystery (premium) dès qu'il est dispo (~1×/6h)
-        "mystery_interval_hours": 6.0, # intervalle entre deux ouvertures du pack mystery
-        "autostart": False,            # relancer la boucle automatiquement au démarrage du serveur
-        "status_sync_seconds": 15.0,   # re-sync léger encre/packs (tâche dédiée) — connaître les vrais chiffres
-        "recycle_interval": 30.0,      # cadence (s) de la tâche de recyclage parallèle
-        "recycle_retry_minutes": 30.0, # délai de base avant de re-tenter une carte 500 (croît selon les échecs)
-        "recycle_quota_cooldown_minutes": 60.0,  # pause du recyclage après un 429 (quota journalier ~200/j)
-        "full_resync_minutes": 0.0,    # 0 = off ; >0 = re-sync complet périodique (exactitude si jeu en parallèle)
-        "marketplace_interval": 45.0,  # cadence (s) de la tâche marketplace parallèle
-        "marketplace_interval_max": 900.0,  # plafond du backoff marketplace (rien à faire)
-        "marketplace_min_interval": 120.0,  # cadence GARANTIE (s) même si des packs restent à ouvrir
+        "recycle_mode": "surplus",     # "surplus" (drain the surplus) | "on_demand" (fund restocks)
+        "recycle_reserve_mode": "fixed",  # "fixed" (keep_spares) | "missing" (keep as many as missing/rarity)
+        "recycle_priority": "common_first",  # recycle order: "common_first" (preserve rares) | "rare_first" (max ink — pure farm)
+        "only_series": "",             # "" = multi-series strategy; otherwise open ONLY this series (multi-account orchestrator)
+        "mystery_pack": True,          # open the mystery (premium) pack as soon as it's available (~1x/6h)
+        "mystery_interval_hours": 6.0, # interval between two mystery-pack openings
+        "autostart": False,            # restart the loop automatically when the server starts
+        "status_sync_seconds": 15.0,   # light ink/packs re-sync (dedicated task) — know the real numbers
+        "recycle_interval": 30.0,      # cadence (s) of the parallel recycle task
+        "recycle_retry_minutes": 30.0, # base delay before retrying a 500 card (grows with failures)
+        "recycle_quota_cooldown_minutes": 60.0,  # recycle pause after a 429 (daily quota ~200/day)
+        "full_resync_minutes": 0.0,    # 0 = off; >0 = periodic full re-sync (accuracy if playing in parallel)
+        "marketplace_interval": 45.0,  # cadence (s) of the parallel marketplace task
+        "marketplace_interval_max": 900.0,  # marketplace backoff cap (nothing to do)
+        "marketplace_min_interval": 120.0,  # GUARANTEED cadence (s) even if packs remain to open
         "on_empty": "wait", "idle_poll_seconds": 60.0, "idle_poll_max": 1800.0,
         "keep_spares": {"C": 0, "UC": 1, "R": 1, "SR": 1, "SSR": 1, "UR": 2, "LR": 2},
-        "recycle_skip_rarities": [],   # raretés JAMAIS recyclées (ex. ["LR"]) — gardées intégralement
+        "recycle_skip_rarities": [],   # rarities NEVER recycled (e.g. ["LR"]) — kept in full
     },
     "packs": {"full_restock_ink": 400, "max_free_packs": 5},
     "marketplace": {
         "enabled": False, "max_listings": 5, "fulfill_others": False,
         "fulfill_per_pass": 3, "prefer_near_completion": True,
-        "dry_run": False,   # true = journalise ce qui SERAIT fait, sans aucune écriture (validation)
-        "max_listing_age_hours": 24.0,   # annonce plus vieille que ça -> annulée puis recréée (0 = jamais)
-        "near_completion_max_missing": 0,  # ne cibler QUE les séries à qui il manque ≤ N cartes (0 = toutes)
+        "dry_run": False,   # true = log what WOULD be done, with no writes at all (validation)
+        "max_listing_age_hours": 24.0,   # listing older than this -> cancelled then recreated (0 = never)
+        "near_completion_max_missing": 0,  # target ONLY series missing <= N cards (0 = all)
     },
     "recycle": {
         "duplicates_endpoint": "/api/cards/duplicates", "max_per_call": 20,
@@ -71,9 +71,9 @@ _DEFAULTS: dict = {
 
 
 def _deep_merge(base: dict, over: dict) -> dict:
-    # Deep-copy : le résultat ne PARTAGE aucune structure mutable avec `base` (ex. _DEFAULTS) ni
-    # `over`. Indispensable : sans ça, modifier settings.raw[section][clé] muterait les défauts
-    # globaux (fuite entre load_settings / reset_config / instances).
+    # Deep-copy: the result SHARES no mutable structure with `base` (e.g. _DEFAULTS) or
+    # `over`. Essential: without it, mutating settings.raw[section][key] would mutate the
+    # global defaults (leakage between load_settings / reset_config / instances).
     out = {k: copy.deepcopy(v) for k, v in base.items()}
     for k, v in over.items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -87,7 +87,7 @@ def _deep_merge(base: dict, over: dict) -> dict:
 class Settings:
     raw: dict = field(default_factory=dict)
 
-    # --- accès groupés ---
+    # --- grouped access ---
     @property
     def api(self) -> dict: return self.raw["api"]
     @property
@@ -115,7 +115,7 @@ class Settings:
 
 
 def load_settings(path: str | os.PathLike | None = None) -> Settings:
-    """Charge config.toml (ou $WIKITCG_CONFIG), fusionné avec les défauts."""
+    """Load config.toml (or $WIKITCG_CONFIG), merged with the defaults."""
     candidate = (
         path
         or os.environ.get("WIKITCG_CONFIG")
@@ -126,7 +126,7 @@ def load_settings(path: str | os.PathLike | None = None) -> Settings:
         with open(candidate, "rb") as fh:
             user_cfg = tomllib.load(fh)
     settings = Settings(raw=_deep_merge(_DEFAULTS, user_cfg))
-    # Surcharges par variables d'environnement (prioritaires — évite de stocker le secret en clair).
+    # Environment-variable overrides (highest priority — avoids storing the secret in clear text).
     if os.environ.get("WIKITCG_SESSION"):
         settings.raw["api"]["session_cookie"] = os.environ["WIKITCG_SESSION"]
     if os.environ.get("WIKITCG_EXTRA_COOKIES"):

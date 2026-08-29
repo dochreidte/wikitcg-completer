@@ -1,5 +1,5 @@
-"""Outils de test : FakeClient (imite WikiTCGClient sans réseau) + fabrique de moteur.
-Les formes de réponses reproduisent les captures HAR réelles (docs/RAPPORT.md §1.4)."""
+"""Test utilities: FakeClient (mimics WikiTCGClient with no network) + engine factory.
+The response shapes reproduce the real HAR captures from the live API."""
 from __future__ import annotations
 
 import tempfile, os, uuid
@@ -19,20 +19,20 @@ DEFAULT_STATUS = {
 
 
 class FakeClient:
-    """Imite l'interface que `Engine` utilise. Aucun réseau. Configurable."""
+    """Mimics the interface `Engine` uses. No network. Configurable."""
 
     def __init__(self, *, status=None, dups=None, locked=None, open_result=None,
                  mine=None, browse=None, quota_after=None, notfound=None):
         self.status = dict(DEFAULT_STATUS, **(status or {}))
         self.ink = self.status["ink"]
-        self._dups = dups or []                       # forme normalisée get_duplicates
-        self.locked = set(locked or [])               # pullIds qui renvoient 500 au recyclage
-        self.quota_after = quota_after                # après N recyclages OK, /recycle renvoie 429 (quota/j)
-        self.notfound = set(notfound or [])           # pullIds qui renvoient 400 cards_not_found
+        self._dups = dups or []                       # normalized get_duplicates shape
+        self.locked = set(locked or [])               # pullIds that return 500 on recycling
+        self.quota_after = quota_after                # after N OK recycles, /recycle returns 429 (daily quota)
+        self.notfound = set(notfound or [])           # pullIds that return 400 cards_not_found
         self._open_result = open_result
         self._mine = mine or []
         self._browse = browse or []
-        # journaux d'appels (assertions)
+        # call logs (assertions)
         self.recycled, self.created, self.fulfilled, self.cancelled, self.opened = [], [], [], [], []
         self.session_cookie = "eyJ.fake.sig"
 
@@ -62,11 +62,11 @@ class FakeClient:
     async def recycle(self, pull_ids, *, retry_5xx=True, retry_429=True):
         pid = pull_ids[0]
         if pid in self.locked:
-            raise ApiError("Erreur serveur 500", status=500)
+            raise ApiError("Server error 500", status=500)
         if pid in self.notfound:
-            raise ApiError("Erreur API 400", status=400, body='{"error":"cards_not_found"}')
+            raise ApiError("API error 400", status=400, body='{"error":"cards_not_found"}')
         if self.quota_after is not None and len(self.recycled) >= self.quota_after:
-            raise ApiError("Quota/limite de recyclage atteint (429)", status=429)
+            raise ApiError("Recycle quota/limit reached (429)", status=429)
         self.recycled.append(pid)
         self.ink += 40
         return {"recycled": 1, "inkEarned": 40, "newBalance": self.ink}
@@ -104,7 +104,7 @@ def make_settings(**engine_over) -> Settings:
 
 
 def make_engine(client=None, *, settings=None, **engine_over):
-    """Retourne (engine, client, db, path) prêts pour des tests asynchrones."""
+    """Return (engine, client, db, path) ready for async tests."""
     client = client or FakeClient()
     settings = settings or make_settings(**engine_over)
     path = os.path.join(tempfile.gettempdir(), f"_wtcg_{uuid.uuid4().hex}.db")

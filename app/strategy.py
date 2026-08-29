@@ -1,23 +1,23 @@
-"""Logique de stratégie.
+"""Strategy logic.
 
-MVP utilisé aujourd'hui :
-  * select_target_series  — quelle série ouvrir en priorité ;
-  * plan_recycle          — quels exemplaires recycler (en préservant la matière d'échange).
+MVP used today:
+  * select_target_series  — which series to open first;
+  * plan_recycle          — which copies to recycle (while preserving trade material).
 
-Phase 2 (échafaudage, non câblé dans le moteur MVP) :
-  * expected_packs_for_card / should_trade_series — bascule dynamique boosters ↔ échanges,
-    sans seuil codé en dur : on compare le coût ESPÉRÉ en packs au coût/dispo d'un échange.
+Phase 2 (scaffolding, not wired into the MVP engine):
+  * expected_packs_for_card / should_trade_series — dynamic booster <-> trade switch,
+    with no hard-coded threshold: compare the EXPECTED pack cost against a trade's cost/availability.
 """
 from __future__ import annotations
 
-# Rareté croissante (du plus commun au plus rare), déduite des sets (C80/UC50/R30/SR20/SSR10/UR7/LR3)
+# Rarity in ascending order (most common to rarest), derived from the sets (C80/UC50/R30/SR20/SSR10/UR7/LR3)
 RARITY_ORDER = ["C", "UC", "R", "SR", "SSR", "UR", "LR"]
 RARITY_RANK = {r: i for i, r in enumerate(RARITY_ORDER)}
-# Du plus rare au plus commun (affichage UI / breakdown par rareté).
+# Rarest to most common (UI display / per-rarity breakdown).
 RARITY_ORDER_DESC = list(reversed(RARITY_ORDER))
 
-# Table d'échange — sémantique « je DONNE (offered) -> je REÇOIS (wanted) ».
-# Pour chaque rareté offerte, raretés que l'on peut demander (égale ou descendante) :
+# Trade table — semantics "I GIVE (offered) -> I RECEIVE (wanted)".
+# For each offered rarity, the rarities one may request (equal or lower):
 TRADE_GIVE_TO_GET = {
     "LR": {"LR"},
     "UR": {"UR"},
@@ -25,27 +25,27 @@ TRADE_GIVE_TO_GET = {
     "SR": {"SR", "R"},
     "R": {"R", "UC"},
     "UC": {"UC", "C"},
-    # "C" : ne peut PAS être offert (les commons sont reçus, ou recyclés).
+    # "C": CANNOT be offered (commons are received, or recycled).
 }
 
-# Raretés qui peuvent être OFFERTES en échange = clés de la table ci-dessus (toutes sauf C).
+# Rarities that can be OFFERED in a trade = keys of the table above (all but C).
 TRADEABLE_RARITIES = set(TRADE_GIVE_TO_GET)
 
 
 def offer_rarities_for_target(target_rarity: str) -> list[str]:
-    """Raretés que je peux OFFRIR pour acquérir une carte de `target_rarity`,
-    triées de la plus faible à la plus forte (pour préserver les cartes de valeur)."""
+    """Rarities I can OFFER to acquire a card of `target_rarity`,
+    sorted from lowest to highest (to preserve valuable cards)."""
     candidates = [give for give, gets in TRADE_GIVE_TO_GET.items() if target_rarity in gets]
     return sorted(candidates, key=lambda r: RARITY_RANK[r])
 
 
 # --------------------------------------------------------------------------- #
-#  MVP : choix de la série à ouvrir
+#  MVP: choosing which series to open
 # --------------------------------------------------------------------------- #
 def select_target_series(progress: list[dict]) -> dict | None:
-    """Priorise les séries incomplètes où il manque le PLUS de cartes
-    (les boosters y sont statistiquement les plus rentables).
-    `progress` = sortie de Database.progress_view().
+    """Prioritizes the incomplete series missing the MOST cards
+    (boosters are statistically the most profitable there).
+    `progress` = output of Database.progress_view().
     """
     incomplete = [p for p in progress if p["total"] and p["missing"] > 0]
     if not incomplete:
@@ -54,14 +54,14 @@ def select_target_series(progress: list[dict]) -> dict | None:
 
 
 # --------------------------------------------------------------------------- #
-#  MVP : politique de recyclage
+#  MVP: recycling policy
 # --------------------------------------------------------------------------- #
 def plan_recycle(duplicates: list[dict], keep_spares: dict[str, int]) -> dict[str, int]:
-    """À partir des doublons d'une série, renvoie {card_id: nb_a_recycler}.
+    """From a series' duplicates, returns {card_id: count_to_recycle}.
 
-    Surplus recyclable = quantity - 1 (exemplaire de collection) - keep_spares[rarity].
-    On garde donc une réserve par rareté pour les échanges (phase 2).
-    `duplicates` = lignes [{card_id, rarity, quantity}].
+    Recyclable surplus = quantity - 1 (collection copy) - keep_spares[rarity].
+    So we keep a reserve per rarity for trades (phase 2).
+    `duplicates` = rows [{card_id, rarity, quantity}].
     """
     plan: dict[str, int] = {}
     for d in duplicates:
@@ -73,23 +73,23 @@ def plan_recycle(duplicates: list[dict], keep_spares: dict[str, int]) -> dict[st
 
 
 # --------------------------------------------------------------------------- #
-#  Phase 2 (échafaudage) : bascule boosters <-> échanges, sans seuil fixe
+#  Phase 2 (scaffolding): booster <-> trade switch, with no fixed threshold
 # --------------------------------------------------------------------------- #
-# Taux par défaut (fallback) si on n'a pas encore assez de données empiriques.
-# Calibrés grossièrement sur la composition d'un set ; seront remplacés par les
-# taux réellement observés via Database.empirical_pull_rates().
+# Default (fallback) rates when we don't yet have enough empirical data.
+# Roughly calibrated on a set's composition; will be replaced by the
+# actually observed rates via Database.empirical_pull_rates().
 _FALLBACK_RATES = {"C": 0.40, "UC": 0.25, "R": 0.15, "SR": 0.10, "SSR": 0.06, "UR": 0.03, "LR": 0.01}
 CARDS_PER_PACK = 5
 
 
 def expected_packs_for_card(rarity: str, missing_of_rarity: int, total_of_rarity: int,
                             rates: dict[str, float] | None = None) -> float:
-    """Nombre espéré de boosters pour tirer UNE carte précise manquante de cette rareté.
+    """Expected number of boosters to pull ONE specific missing card of this rarity.
 
-    Modèle simple : P(obtenir une carte voulue donnée dans un slot)
-      = P(rareté) * (manquantes_de_cette_rareté / total_de_cette_rareté) / total_de_cette_rareté
-    -> à mesure qu'il reste peu de manquantes, l'espérance explose (collectionneur de coupons),
-       ce qui fait émerger naturellement la bascule vers l'échange ciblé.
+    Simple model: P(getting a given wanted card in a slot)
+      = P(rarity) * (missing_of_this_rarity / total_of_this_rarity) / total_of_this_rarity
+    -> as fewer cards remain missing, the expectation blows up (coupon collector),
+       which naturally surfaces the switch to targeted trading.
     """
     rates = rates or _FALLBACK_RATES
     p_rarity = rates.get(rarity, 0.02)
@@ -103,9 +103,9 @@ def expected_packs_for_card(rarity: str, missing_of_rarity: int, total_of_rarity
 def should_trade_series(missing_by_rarity: dict[str, int], total_by_rarity: dict[str, int],
                         rates: dict[str, float] | None = None,
                         trade_cost_packs_equiv: float = 6.0) -> bool:
-    """Heuristique de bascule : si le coût espéré médian (en packs) des cartes encore
-    manquantes dépasse l'équivalent-packs d'un échange, on privilégie l'échange.
-    `trade_cost_packs_equiv` = coût d'opportunité d'un échange exprimé en « packs ».
+    """Switch heuristic: if the median expected cost (in packs) of the still-missing
+    cards exceeds the pack-equivalent of a trade, we favor trading.
+    `trade_cost_packs_equiv` = opportunity cost of a trade expressed in "packs".
     """
     costs = []
     for rar, miss in missing_by_rarity.items():

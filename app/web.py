@@ -1,4 +1,4 @@
-"""Application web FastAPI : tableau de bord + contrôle du moteur + flux temps réel."""
+"""FastAPI web app: dashboard + engine control + real-time feed."""
 from __future__ import annotations
 
 import asyncio
@@ -22,33 +22,33 @@ from .logging_conf import setup_logging
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 
-# Réglages modifiables en direct depuis l'UI : nom -> (section, type de coercition).
+# Settings editable live from the UI: name -> (section, coercion type).
 EDITABLE: dict[str, tuple[str, type]] = {
     "buy_packs_with_ink": ("engine", bool),
     "auto_open": ("engine", bool),
     "auto_recycle": ("engine", bool),
     "on_empty": ("engine", str),          # "wait" | "stop"
     "recycle_mode": ("engine", str),      # "surplus" | "on_demand"
-    "recycle_reserve_mode": ("engine", str),  # "fixed" (keep_spares) | "missing" (par rareté)
-    "recycle_priority": ("engine", str),  # "common_first" (préserve les rares) | "rare_first" (farm pur)
+    "recycle_reserve_mode": ("engine", str),  # "fixed" (keep_spares) | "missing" (per rarity)
+    "recycle_priority": ("engine", str),  # "common_first" (preserve rares) | "rare_first" (pure farm)
     "mystery_pack": ("engine", bool),
     "min_ink_reserve": ("engine", int),
     "idle_poll_seconds": ("engine", float),
-    "recycle_quota_cooldown_minutes": ("engine", float),  # pause recyclage après 429 (quota ~200/j)
-    "marketplace_min_interval": ("engine", float),  # cadence marketplace garantie (s)
+    "recycle_quota_cooldown_minutes": ("engine", float),  # recycling pause after 429 (quota ~200/day)
+    "marketplace_min_interval": ("engine", float),  # guaranteed marketplace cadence (s)
     "autostart": ("engine", bool),
-    # Marketplace (engage de vraies cartes / d'autres joueurs) — contrat create/cancel vérifié.
+    # Marketplace (commits real cards / other players) — create/cancel contract verified.
     "enabled": ("marketplace", bool),
     "fulfill_others": ("marketplace", bool),
     "max_listings": ("marketplace", int),
-    "near_completion_max_missing": ("marketplace", int),  # 0 = toutes ; N = séries ≤ N manquantes
+    "near_completion_max_missing": ("marketplace", int),  # 0 = all; N = series with <= N missing
     "dry_run": ("marketplace", bool),
 }
 
-# Objets partagés (initialisés au démarrage via lifespan)
+# Shared objects (initialized at startup via lifespan)
 state: dict = {}
 
-# Anti-spam du sync paresseux de /api/live quand le moteur est à l'arrêt.
+# Anti-spam for the lazy sync of /api/live when the engine is stopped.
 _live_sync: dict = {"at": 0.0, "busy": False}
 
 
@@ -63,7 +63,7 @@ def _editable_view(settings) -> dict:
 
 
 def _overridden_keys(db) -> list:
-    """Noms des réglages actuellement forcés par l'UI (présents dans settings_overrides)."""
+    """Names of settings currently forced by the UI (present in settings_overrides)."""
     ov = db.get_json("settings_overrides", {}) or {}
     return [k for sec in ov.values() if isinstance(sec, dict) for k in sec]
 
@@ -72,18 +72,18 @@ def _overridden_keys(db) -> list:
 async def lifespan(app: FastAPI):
     settings = load_settings()
     db = Database(settings.paths["database"])
-    # Niveau de log ajusté depuis l'UI (persisté) : appliqué avant la config des logs.
+    # Log level adjusted from the UI (persisted): applied before logging config.
     log_over = db.get_json("logging_override")
     if isinstance(log_over, dict):
         settings.raw["logging"].update(log_over)
     setup_logging(settings.paths["log_file"], settings.logging.get("level", "INFO"),
                   log_requests=bool(settings.logging.get("log_requests", False)))
     log = logging.getLogger("wikitcg")
-    # Réglages ajustés en direct depuis l'UI (persistés en base) : ils priment sur le TOML.
+    # Settings adjusted live from the UI (persisted in DB): they win over the TOML.
     over = db.get_json("settings_overrides")
     if isinstance(over, dict):
         settings.raw = _deep_merge(settings.raw, over)
-    # Cookie de session mis à jour depuis l'UI (persisté) : prime sur le TOML.
+    # Session cookie updated from the UI (persisted): wins over the TOML.
     cookie_over = db.get_kv("session_cookie_override")
     if cookie_over:
         settings.raw["api"]["session_cookie"] = cookie_over
@@ -92,20 +92,20 @@ async def lifespan(app: FastAPI):
         settings.raw["api"]["extra_cookies"] = extra_over
     bus = EventBus()
     client = WikiTCGClient(settings)
-    # Persiste automatiquement tout cookie de session rafraîchi par le serveur.
+    # Automatically persist any session cookie refreshed by the server.
     client.session_sink = lambda tok: db.set_kv("session_cookie_override", tok)
     engine = Engine(client, db, bus, settings)
     state.update(settings=settings, db=db, bus=bus, client=client, engine=engine, log=log)
 
     if not settings.has_session:
-        log.warning("Cookie wtcg_session absent : renseigne api.session_cookie dans config.toml "
-                    "(l'UI démarre, mais les appels API échoueront en 401).")
+        log.warning("wtcg_session cookie missing: set api.session_cookie in config.toml "
+                    "(the UI starts, but API calls will fail with 401).")
     elif not os.environ.get("WIKITCG_SESSION") and not db.get_kv("session_cookie_override"):
-        log.info("Sécurité : le cookie est lu depuis config.toml (en clair). Tu peux préférer la "
-                 "variable d'environnement WIKITCG_SESSION et faire tourner le token régulièrement.")
-    log.info("Serveur prêt sur http://%s:%s", settings.server["host"], settings.server["port"])
+        log.info("Security: the cookie is read from config.toml (in clear text). You may prefer the "
+                 "WIKITCG_SESSION environment variable and rotate the token regularly.")
+    log.info("Server ready at http://%s:%s", settings.server["host"], settings.server["port"])
     if settings.engine.get("autostart") and settings.has_session:
-        log.info("autostart activé : démarrage automatique de la boucle.")
+        log.info("autostart enabled: automatically starting the loop.")
         engine.start()
     try:
         yield
@@ -125,7 +125,7 @@ async def index() -> str:
 
 
 def _live_payload(engine, db, settings) -> dict:
-    """Champs partagés par /api/state et /api/live (statut, ressources, séries, config, session)."""
+    """Fields shared by /api/state and /api/live (status, resources, series, config, session)."""
     return {
         "status": engine.status,
         "running": engine.running,
@@ -157,11 +157,11 @@ async def get_state() -> JSONResponse:
 
 @app.get("/api/live")
 async def get_live() -> JSONResponse:
-    """Sous-ensemble LÉGER de /api/state (sans la liste d'actions) : pour un rafraîchissement
-    périodique fréquent du tableau de bord (encre, packs, séries, statut, session).
+    """LIGHT subset of /api/state (without the actions list): for frequent periodic
+    refreshes of the dashboard (ink, packs, series, status, session).
 
-    Quand le moteur est À L'ARRÊT, on rafraîchit paresseusement le statut serveur (cache 15 s)
-    pour que les infos restent justes même sans boucle active."""
+    When the engine is STOPPED, lazily refresh the server status (15 s cache) so the
+    info stays accurate even without an active loop."""
     engine: Engine = state["engine"]
     db: Database = state["db"]
     settings = state["settings"]
@@ -183,7 +183,7 @@ async def get_live() -> JSONResponse:
 
 @app.post("/api/logging")
 async def set_logging(payload: dict) -> JSONResponse:
-    """Change le niveau de log À CHAUD (et la trace des requêtes), persisté en base."""
+    """Change the log level LIVE (and request tracing), persisted in the database."""
     settings = state["settings"]
     db: Database = state["db"]
     lvl = str((payload or {}).get("level", settings.logging.get("level", "INFO"))).upper()
@@ -205,8 +205,8 @@ async def get_config() -> JSONResponse:
 
 @app.post("/api/config")
 async def set_config(payload: dict) -> JSONResponse:
-    """Met à jour les réglages éditables EN DIRECT (effet dès l'itération suivante)
-    et les persiste en base pour survivre à un redémarrage."""
+    """Update the editable settings LIVE (takes effect on the next iteration)
+    and persist them in the database so they survive a restart."""
     settings = state["settings"]
     db: Database = state["db"]
     applied: dict = {}
@@ -220,7 +220,7 @@ async def set_config(payload: dict) -> JSONResponse:
             applied[name] = settings.raw[section][name]
         except (TypeError, ValueError):
             continue
-    # Ne persiste QUE les clés réellement modifiées (le TOML reste la source pour le reste).
+    # Persist ONLY the keys actually changed (the TOML stays the source for the rest).
     existing = db.get_json("settings_overrides", {})
     if not isinstance(existing, dict):
         existing = {}
@@ -234,10 +234,10 @@ async def set_config(payload: dict) -> JSONResponse:
 
 @app.post("/api/config/reset")
 async def reset_config() -> JSONResponse:
-    """Oublie les réglages modifiés via l'UI et revient aux valeurs de config.toml."""
+    """Forget the settings changed via the UI and revert to the config.toml values."""
     settings = state["settings"]
     db: Database = state["db"]
-    fresh = load_settings()  # TOML + variables d'env, sans les overrides UI
+    fresh = load_settings()  # TOML + env vars, without the UI overrides
     for name, (section, _) in EDITABLE.items():
         settings.raw[section][name] = fresh.raw[section].get(name)
     db.set_kv("settings_overrides", "")
@@ -247,9 +247,9 @@ async def reset_config() -> JSONResponse:
 
 @app.post("/api/auth/cookie")
 async def set_cookie(payload: dict) -> JSONResponse:
-    """« Refresh » manuel de session : on colle un cookie wtcg_session frais (du navigateur).
-    Effet immédiat (sans redémarrage) + persistance. C'est le mécanisme de renouvellement,
-    car wikitcg n'expose aucun endpoint de refresh côté serveur."""
+    """Manual session "refresh": paste a fresh wtcg_session cookie (from the browser).
+    Immediate effect (no restart) + persistence. This is the renewal mechanism,
+    because wikitcg exposes no server-side refresh endpoint."""
     settings = state["settings"]
     client: WikiTCGClient = state["client"]
     engine: Engine = state["engine"]
@@ -257,7 +257,7 @@ async def set_cookie(payload: dict) -> JSONResponse:
     session = (payload or {}).get("session_cookie", "").strip()
     extra = (payload or {}).get("extra_cookies", "").strip()
     if not session or session.count(".") < 2:
-        return JSONResponse({"ok": False, "error": "Cookie wtcg_session invalide (un JWT est attendu)."},
+        return JSONResponse({"ok": False, "error": "Invalid wtcg_session cookie (a JWT is expected)."},
                             status_code=400)
     client.update_session(session, extra)
     settings.raw["api"]["session_cookie"] = session
@@ -273,8 +273,8 @@ async def set_cookie(payload: dict) -> JSONResponse:
 
 @app.get("/api/marketplace")
 async def marketplace() -> JSONResponse:
-    """Vue marketplace EN LECTURE SEULE (mes annonces + le marché actif).
-    Sert à rendre la marketplace visible même quand l'automatisation est désactivée."""
+    """READ-ONLY marketplace view (my listings + the active market).
+    Makes the marketplace visible even when automation is disabled."""
     settings = state["settings"]
     client: WikiTCGClient = state["client"]
     cfg = settings.marketplace
@@ -287,7 +287,7 @@ async def marketplace() -> JSONResponse:
     try:
         mine = await client.marketplace_mine()
         browse = await client.marketplace_browse()
-    except Exception as exc:  # auth/réseau : on renvoie l'état sans casser l'UI
+    except Exception as exc:  # auth/network: return the state without breaking the UI
         return JSONResponse({"enabled": bool(cfg.get("enabled")), "error": str(exc),
                              "mine": [], "market": []})
     mine_l = [norm(l) for l in (mine.get("listings") or [])]
@@ -319,7 +319,7 @@ async def series_detail(sid: str) -> JSONResponse:
     prog = next((p for p in db.progress_view() if p["series_id"] == sid), None)
     rarity = db.rarity_breakdown(sid)
     missing = db.missing_cards(sid)
-    # Du plus rare au plus commun (rang décroissant), puis par numéro de carte ; inconnues en dernier.
+    # Rarest to most common (descending rank), then by card number; unknowns last.
     missing.sort(key=lambda m: (-strategy.RARITY_RANK.get(m["rarity"], -1), m.get("card_number") or 0))
     return JSONResponse({
         "series": prog,
@@ -362,7 +362,7 @@ async def ws(websocket: WebSocket) -> None:
             event = await q.get()
             await websocket.send_json(event)
     except (WebSocketDisconnect, asyncio.CancelledError):
-        pass  # déconnexion client ou arrêt serveur (Ctrl+C) : normal
+        pass  # client disconnect or server shutdown (Ctrl+C): normal
     except Exception:
         pass
     finally:

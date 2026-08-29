@@ -1,13 +1,13 @@
-"""Page web de suivi de l'orchestrateur multi-comptes.
+"""Web monitoring page for the multi-account orchestrator.
 
-Sert une page HTML autonome (aucune ressource externe) qui interroge /api/multi/status
-toutes les 2 s et affiche, par compte : statut, série, niveau, encre, packs dispo, packs
-ouverts et exemplaires recyclés — le compte actif étant surligné.
+Serves a self-contained HTML page (no external resources) that polls /api/multi/status every
+2 s and shows, per account: status, series, level, ink, available packs, opened packs and
+recycled copies — with the active account highlighted.
 
-Un seul contrôle : la BASCULE MANUELLE de compte. Chaque ligne propose un bouton « Activer »
-(POST /api/multi/switch) pour quitter le compte actif et passer immédiatement à ce compte ;
-le compte actif, lui, propose « Passer » pour aller simplement au suivant. Le reste du pilotage
-(séries, cookies, réglages) se fait toujours via accounts.toml / config.toml.
+A single control: the MANUAL account switch. Each row offers an "Activate" button
+(POST /api/multi/switch) to leave the active account and switch to it immediately; the active
+account itself offers "Next" to simply move on. The rest of the control (series, cookies,
+settings) is still done via accounts.toml / config.toml.
 """
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 _PAGE = """<!doctype html>
-<html lang="fr"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wikitcg — suivi multi-comptes</title>
+<title>wikitcg — multi-account monitoring</title>
 <style>
   :root { color-scheme: dark; }
   body { margin:0; background:#0f1115; color:#e6e8ee; font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif; }
@@ -32,9 +32,10 @@ _PAGE = """<!doctype html>
   tr.active td { background:#13241c; }
   .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px; vertical-align:middle; }
   .badge { font-size:12px; color:#aeb6c8; }
-  .s-run .dot{background:#3ddc84} .s-wait .dot,.s-done .dot{background:#7c83955}
-  .s-run{color:#3ddc84} .s-sync .dot{background:#4aa8ff} .s-sync{color:#4aa8ff}
-  .s-done{color:#8b93a7} .s-err .dot{background:#ff5c5c} .s-err{color:#ff7a7a}
+  .s-run .dot{background:#3ddc84} .s-run{color:#3ddc84}
+  .s-sync .dot{background:#4aa8ff} .s-sync{color:#4aa8ff}
+  .s-done .dot{background:#7c8395} .s-done{color:#8b93a7}
+  .s-err .dot{background:#ff5c5c} .s-err{color:#ff7a7a}
   .s-idle .dot{background:#555b6e} .s-idle{color:#8b93a7}
   .muted{color:#5b6273}
   footer{padding:10px 18px;color:#5b6273;font-size:12px}
@@ -47,39 +48,39 @@ _PAGE = """<!doctype html>
 </style></head>
 <body>
   <header>
-    <h1>Suivi multi-comptes — farm</h1>
-    <div class="sub" id="head">Connexion…</div>
+    <h1>Multi-account monitoring — farm</h1>
+    <div class="sub" id="head">Connecting…</div>
   </header>
   <table>
     <thead><tr>
-      <th>Compte</th><th>Série</th><th>Statut</th>
-      <th class="num">Niv.</th><th class="num">Encre</th><th class="num">Packs dispo</th>
-      <th class="num">Ouverts</th><th class="num">Recyclés</th><th>Action</th>
+      <th>Account</th><th>Series</th><th>Status</th>
+      <th class="num">Lvl</th><th class="num">Ink</th><th class="num">Packs avail.</th>
+      <th class="num">Opened</th><th class="num">Recycled</th><th>Action</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
   <footer id="foot"></footer>
 <script>
 const LBL = {
-  idle:["s-idle","inactif"], syncing:["s-sync","synchro…"], running:["s-run","farm en cours"],
-  waiting:["s-done","épuisé"], stopped:["s-done","arrêté"], error:["s-err","erreur"],
-  "en attente":["s-idle","en attente"], "démarrage":["s-sync","démarrage…"],
-  "épuisé":["s-done","épuisé"], "arrêté":["s-done","arrêté"], "erreur":["s-err","erreur"],
+  pending:["s-idle","pending"], starting:["s-sync","starting…"],
+  idle:["s-idle","idle"], syncing:["s-sync","syncing…"], running:["s-run","farming"],
+  waiting:["s-done","exhausted"], exhausted:["s-done","exhausted"],
+  stopped:["s-done","stopped"], error:["s-err","error"],
 };
 const n = v => (v===null||v===undefined) ? '<span class="muted">—</span>' : v;
 const dur = s => { s=s|0; const h=s/3600|0, m=(s%3600)/60|0; return h?`${h} h ${m} min`:`${m} min`; };
 async function tick(){
   let d; try { d = await (await fetch('/api/multi/status')).json(); }
-  catch(e){ document.getElementById('head').textContent='Orchestrateur arrêté ou injoignable.'; return; }
-  const act = d.active ? `actif : <b>${d.active}</b>` : '<span class="muted">aucun compte actif</span>';
+  catch(e){ document.getElementById('head').textContent='Orchestrator stopped or unreachable.'; return; }
+  const act = d.active ? `active: <b>${d.active}</b>` : '<span class="muted">no active account</span>';
   document.getElementById('head').innerHTML =
-    `${act} &nbsp;·&nbsp; tour <b>#${d.cycle}</b> &nbsp;·&nbsp; ${d.accounts.length} compte(s) &nbsp;·&nbsp; en route depuis ${dur(d.uptime_s)}`;
+    `${act} &nbsp;·&nbsp; pass <b>#${d.cycle}</b> &nbsp;·&nbsp; ${d.accounts.length} account(s) &nbsp;·&nbsp; running for ${dur(d.uptime_s)}`;
   document.getElementById('rows').innerHTML = d.accounts.map(a => {
     const [cls,txt] = LBL[a.status] || ["s-idle", a.status||"—"];
     const pend = d.pending_switch !== undefined && d.pending_switch === a.name;
     const btn = a.active
-      ? `<button class="sw next" data-acc="">⏭ Passer</button>`
-      : `<button class="sw" data-acc="${encodeURIComponent(a.name)}"${pend?' disabled':''}>${pend?'⏳ en cours…':'▶ Activer'}</button>`;
+      ? `<button class="sw next" data-acc="">⏭ Next</button>`
+      : `<button class="sw" data-acc="${encodeURIComponent(a.name)}"${pend?' disabled':''}>${pend?'⏳ pending…':'▶ Activate'}</button>`;
     return `<tr class="${a.active?'active':''}">
       <td>${a.active?'▶ ':''}${a.name}</td><td class="badge">${a.series}</td>
       <td class="${cls}"><span class="dot"></span>${txt}</td>
@@ -89,9 +90,9 @@ async function tick(){
   const tot = d.accounts.reduce((s,a)=>s+(a.opened||0),0);
   const rec = d.accounts.reduce((s,a)=>s+(a.recycled||0),0);
   document.getElementById('foot').textContent =
-    `Total : ${tot} pack(s) ouvert(s), ${rec} recyclé(s) · pause inter-tours ${d.idle_cycle_min} min · MAJ 2 s`;
+    `Total: ${tot} pack(s) opened, ${rec} recycled · inter-pass pause ${d.idle_cycle_min} min · refresh 2 s`;
 }
-// Bascule manuelle : un seul écouteur délégué sur #rows (qui persiste malgré le re-rendu).
+// Manual switch: a single delegated listener on #rows (which persists across re-renders).
 document.getElementById('rows').addEventListener('click', async (e) => {
   const b = e.target.closest('button.sw');
   if (!b) return;
@@ -111,7 +112,7 @@ tick(); setInterval(tick, 2000);
 
 
 def make_app(runner) -> FastAPI:
-    app = FastAPI(title="wikitcg multi-comptes (suivi)")
+    app = FastAPI(title="wikitcg multi-account (monitoring)")
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
@@ -123,8 +124,8 @@ def make_app(runner) -> FastAPI:
 
     @app.post("/api/multi/switch")
     async def switch(request: Request) -> JSONResponse:
-        """Bascule manuelle : {"account": "<nom>"} pour activer ce compte, ou corps vide
-        pour passer simplement au compte suivant."""
+        """Manual switch: {"account": "<name>"} to activate that account, or an empty body
+        to simply move to the next account."""
         try:
             body = await request.json()
         except Exception:

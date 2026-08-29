@@ -1,6 +1,6 @@
-"""Actions du moteur (mixin de `Engine`) : ouverture de packs, pack mystery, recyclage.
+"""Engine actions (mixin of `Engine`): opening packs, mystery pack, recycling.
 
-Mêlé à `Engine` : accès à self.client / db / settings / resources / _emit / _push_* /
+Mixed into `Engine`: accesses self.client / db / settings / resources / _emit / _push_* /
 _recycle_skip / _my_listings / _recycle_warned / _mystery_due_at.
 """
 from __future__ import annotations
@@ -18,12 +18,12 @@ log = logging.getLogger("wikitcg.engine")
 class ActionsMixin:
     async def open_one(self, series_id: str, *, label: str = "Booster", kind: str = "open") -> None:
         res = await self.client.open_pack(series_id)
-        # L'ouverture peut renvoyer 200 avec un champ {error} (ex. cooldown du pack mystery,
-        # plus de packs…). On le traite comme un échec pour ne PAS décrémenter à tort.
+        # Opening can return 200 with an {error} field (e.g. mystery-pack cooldown, no more
+        # packs...). We treat it as a failure so we do NOT wrongly decrement.
         if isinstance(res, dict) and res.get("error"):
-            raise ApiError(f"Ouverture refusée : {res['error']}", body=str(res.get("error")))
+            raise ApiError(f"Pack open rejected: {res['error']}", body=str(res.get("error")))
         cards = res.get("cards", [])
-        # méta série (nom + couleurs) si disponibles
+        # series meta (name + colors) if available
         s = res.get("series") or {}
         if s.get("name"):
             size = SERIES_SEED.get(series_id, {}).get("size") or self.db.catalog_size(series_id)
@@ -37,60 +37,60 @@ class ActionsMixin:
             self.db.log_pull(series_id, cid, rarity, was_new)
             (new_cards if was_new else dup_cards).append({"id": cid, "rarity": rarity,
                                                           "title": c.get("article", {}).get("title")})
-        # Compte de packs : on préfère le chiffre renvoyé par le serveur (fiable) ;
-        # à défaut, on décrémente localement (optimiste).
+        # Pack count: prefer the number returned by the server (reliable); otherwise
+        # decrement locally (optimistic).
         if res.get("totalAvailable") is not None:
             self.resources["total_available"] = res["totalAvailable"]
             self.resources["free_packs"] = res.get("freePacks", self.resources.get("free_packs", 0))
         else:
             self.resources["free_packs"] = max(self.resources.get("free_packs", 1) - 1, 0)
             self.resources["total_available"] = max(self.resources.get("total_available", 1) - 1, 0)
-        self.opened_total += 1   # suivi multi-comptes : a-t-on ouvert quelque chose cette session ?
-        self._emit(kind, f"{label} ouvert : {len(new_cards)} nouvelle(s), {len(dup_cards)} doublon(s)",
+        self.opened_total += 1   # multi-account tracking: did we open anything this session?
+        self._emit(kind, f"{label} opened: {len(new_cards)} new, {len(dup_cards)} duplicate(s)",
                    series_id=series_id, detail={"new": new_cards, "dup": dup_cards,
                                                 "xp": res.get("xpEarned"), "streak": res.get("streak")})
-        # Suivi : met en avant les cartes RARES tirées (SSR et plus) et les montées de niveau.
+        # Tracking: highlight RARE cards pulled (SSR and above) and level-ups.
         rares = [c for c in new_cards if c["rarity"] in ("SSR", "UR", "LR")]
         for c in rares:
-            self._emit("rare", f"✨ Carte rare : {c['rarity']} {c.get('title') or c['id']}",
+            self._emit("rare", f"✨ Rare card: {c['rarity']} {c.get('title') or c['id']}",
                        series_id=series_id, detail=c)
         lvl = res.get("levelUp")
         if lvl:
             new_lvl = lvl.get("level") if isinstance(lvl, dict) else lvl
-            self._emit("level", f"⬆️ Niveau {new_lvl} atteint !", detail={"levelUp": lvl})
+            self._emit("level", f"⬆️ Level {new_lvl} reached!", detail={"levelUp": lvl})
         self._push_resources()
         self._push_progress()
-        # Annule sans tarder toute annonce devenue inutile : j'ai tiré la carte qu'elle visait.
+        # Promptly cancel any listing made pointless: I just pulled the card it wanted.
         if self._my_listings and new_cards:
             await self._cancel_obsolete_listings({c["id"] for c in new_cards})
 
     async def _cancel_obsolete_listings(self, acquired_ids: set[str]) -> None:
-        """Annule les annonces actives dont la carte VOULUE vient d'être obtenue."""
+        """Cancel active listings whose WANTED card was just obtained."""
         remaining: list[dict] = []
         for l in self._my_listings:
             if l.get("wanted_card_id") in acquired_ids:
                 try:
                     await self.client.marketplace_cancel(l["id"])
-                    self._emit("listing", f"Annonce annulée : {l['wanted_card_id']} obtenue dans un pack",
+                    self._emit("listing", f"Listing cancelled: {l['wanted_card_id']} obtained in a pack",
                                detail=l)
                 except ApiError as exc:
-                    self._emit("listing", f"Annulation refusée : {exc}", level="warn", detail=l)
+                    self._emit("listing", f"Cancellation rejected: {exc}", level="warn", detail=l)
                     remaining.append(l)
             else:
                 remaining.append(l)
         self._my_listings = remaining
 
     async def _try_open_mystery(self) -> bool:
-        """Ouvre le pack 'mystery' (premium, ~1×/6h) via /api/packs/open seriesId=mystery —
-        comme un pack normal (il consomme un pack dispo, 0 encre). Sur cooldown/refus, on
-        re-tente plus tard sans spammer. L'échéance est persistée (survit au redémarrage)."""
+        """Open the 'mystery' pack (premium, ~1x/6h) via /api/packs/open seriesId=mystery —
+        like a normal pack (consumes one available pack, 0 ink). On cooldown/refusal, retry
+        later without spamming. The due time is persisted (survives restart)."""
         interval = float(self.settings.engine.get("mystery_interval_hours", 6.0)) * 3600
         try:
-            await self.open_one("mystery", label="Pack mystery", kind="mystery")
+            await self.open_one("mystery", label="Mystery pack", kind="mystery")
         except ApiError as exc:
-            self._mystery_due_at = time.time() + 1800   # cooldown/refus : nouvel essai dans ~30 min
+            self._mystery_due_at = time.time() + 1800   # cooldown/refusal: retry in ~30 min
             self.db.set_kv("mystery_due_at", str(self._mystery_due_at))
-            self._emit("mystery", f"Pack mystery indisponible ({exc}) — nouvel essai plus tard.",
+            self._emit("mystery", f"Mystery pack unavailable ({exc}) — will retry later.",
                        level="warn")
             return False
         self._mystery_due_at = time.time() + interval
@@ -98,22 +98,22 @@ class ActionsMixin:
         return True
 
     async def recycle_pass(self, target_ink: int | None = None) -> int:
-        """Recyclage GLOBAL : récupère les doublons via /api/cards/duplicates,
-        applique la politique keep_spares, recycle le surplus. Renvoie le nb recyclé.
+        """GLOBAL recycling: fetches duplicates via /api/cards/duplicates, applies the
+        keep_spares policy, recycles the surplus. Returns the number recycled.
 
-        Chaque doublon = {card_id, series_id, rarity, copies, pull_ids:[…]} ; on recycle
-        les `copies - 1 - réserve` premiers exemplaires (pull_ids). En cas de réponse non
-        interprétable (aucun exemplaire identifié) -> avertissement, 0 recyclage.
+        Each duplicate = {card_id, series_id, rarity, copies, pull_ids:[...]}; we recycle the
+        first `copies - 1 - reserve` copies (pull_ids). If the response can't be interpreted
+        (no copy identified) -> warning, 0 recycled.
 
-        Si `target_ink` est fourni (recyclage « à la demande »), on ne recycle QUE le minimum
-        nécessaire pour atteindre cette encre, en sacrifiant les exemplaires les MOINS
-        précieux d'abord — pour préserver les cartes de valeur (matière d'échange).
+        If `target_ink` is given (on-demand recycling), we recycle ONLY the minimum needed to
+        reach that ink amount, sacrificing the LEAST valuable copies first — to preserve
+        valuable cards (trade material).
         """
-        # Quota JOURNALIER de recyclage atteint récemment (429) -> on suspend : inutile
-        # d'appeler /duplicates ni /recycle, tout renverrait 429. L'ouverture continue.
+        # DAILY recycle quota recently hit (429) -> suspend: no point calling /duplicates or
+        # /recycle, everything would return 429. Opening keeps going.
         quota_until = self._recycle_quota_until
         if quota_until > time.time():
-            log.debug("Recyclage en pause (quota journalier) — reprise dans ~%d min.",
+            log.debug("Recycling paused (daily quota) — resuming in ~%d min.",
                       int((quota_until - time.time()) / 60) + 1)
             return 0
         dups = await self.client.get_duplicates(self.settings.recycle)
@@ -122,8 +122,8 @@ class ActionsMixin:
         if all(not d.get("pull_ids") for d in dups):
             if not self._recycle_warned:
                 self._recycle_warned = True
-                self._emit("recycle", "Réponse de /api/cards/duplicates non reconnue : "
-                           "recyclage suspendu (colle un exemple pour finaliser le parsing).",
+                self._emit("recycle", "Unrecognized /api/cards/duplicates response: "
+                           "recycling suspended (paste a sample to finalize parsing).",
                            level="warn")
             return 0
 
@@ -132,25 +132,25 @@ class ActionsMixin:
         now = time.time()
         mkt_on = bool(self.settings.marketplace.get("enabled"))
         skip_rarities = set(self.settings.engine.get("recycle_skip_rarities", []))
-        # Réserve : "fixed" = keep_spares par carte (+plancher marketplace) ; "missing" = garder,
-        # PAR RARETÉ, autant de doublons qu'il manque de cartes de cette rareté (matière d'échange
-        # pour acquérir les manquantes). Ex. 15 LR en double, 3 manquantes -> on en recycle 12.
+        # Reserve: "fixed" = keep_spares per card (+marketplace floor); "missing" = keep, PER
+        # RARITY, as many duplicates as there are missing cards of that rarity (trade material
+        # to acquire the missing ones). E.g. 15 duplicate LR, 3 missing -> recycle 12.
         reserve_mode = self.settings.engine.get("recycle_reserve_mode", "fixed")
         missing_by_rar = self.db.missing_by_rarity() if reserve_mode == "missing" else {}
 
-        # Pour chaque TYPE : `surplus` = nb d'exemplaires recyclables de cette carte (on garde
-        # toujours 1 exemplaire de collection). On retient TOUS les pullIds (hors cooldown) pour
-        # pouvoir tenter un AUTRE exemplaire si l'un est verrouillé (500).
+        # For each TYPE: `surplus` = number of recyclable copies of this card (we always keep
+        # 1 collection copy). We keep ALL pullIds (outside cooldown) so we can try ANOTHER copy
+        # if one is locked (500).
         groups: list[dict] = []
         extras_by_rar: dict[str, int] = {}
         skipped_cooldown = 0
         for d in dups:
             rarity = d.get("rarity") or ""
-            if rarity in skip_rarities:   # rareté exclue (ex. LR) -> on ne recycle jamais
+            if rarity in skip_rarities:   # excluded rarity (e.g. LR) -> never recycle
                 continue
             copies = d.get("copies", len(d["pull_ids"]))
             if reserve_mode == "missing":
-                surplus = copies - 1                       # tous les extras ; réserve appliquée par rareté
+                surplus = copies - 1                       # all extras; reserve applied per rarity
             else:
                 reserve = keep.get(rarity, 0)
                 if mkt_on and rarity in strategy.TRADEABLE_RARITIES:
@@ -160,9 +160,9 @@ class ActionsMixin:
                 continue
             pulls = []
             for pid in d["pull_ids"]:
-                if pid in self._recycle_done:              # déjà recyclé/épuisé cette session
-                    continue                                # (liste /duplicates en retard) -> on ignore
-                if self._recycle_skip.get(pid, 0) > now:   # en cooldown après un 500
+                if pid in self._recycle_done:              # already recycled/exhausted this session
+                    continue                                # (stale /duplicates list) -> ignore
+                if self._recycle_skip.get(pid, 0) > now:   # in cooldown after a 500
                     skipped_cooldown += 1
                 else:
                     pulls.append(pid)
@@ -171,7 +171,7 @@ class ActionsMixin:
                 groups.append({"card_id": d.get("card_id"), "rarity": rarity,
                                "series_id": d.get("series_id"), "surplus": surplus, "pulls": pulls})
 
-        # Mode "missing" : budget recyclable PAR RARETÉ = total des extras - nb de manquantes.
+        # "missing" mode: recyclable budget PER RARITY = total extras - number missing.
         rarity_budget = {}
         if reserve_mode == "missing":
             for r, extras in extras_by_rar.items():
@@ -179,21 +179,21 @@ class ActionsMixin:
 
         if not groups:
             if skipped_cooldown:
-                log.debug("Recyclage : %d exemplaire(s) en cooldown 500, réessai plus tard.",
+                log.debug("Recycling: %d copy(ies) in 500 cooldown, retry later.",
                           skipped_cooldown)
             else:
-                log.debug("Recyclage : aucun surplus au-delà de la réserve (%d type(s))", len(dups))
+                log.debug("Recycling: no surplus beyond the reserve (%d type(s))", len(dups))
             return 0
-        # Ordre de recyclage par rareté :
-        #  • "common_first" (défaut) : on sacrifie les moins rares d'abord -> préserve les cartes
-        #    de valeur (matière d'échange) ;
-        #  • "rare_first" (farm pur) : on recycle les plus rares d'abord -> encre MAXIMALE extraite
-        #    dans la limite du quota journalier (~200 recyclages/j) puisque LR/UR rapportent le plus.
+        # Recycle order by rarity:
+        #  * "common_first" (default): sacrifice the least rare first -> preserves valuable
+        #    cards (trade material);
+        #  * "rare_first" (pure farm): recycle the rarest first -> MAXIMUM ink extracted within
+        #    the daily quota (~200 recycles/day) since LR/UR are worth the most.
         rare_first = self.settings.engine.get("recycle_priority", "common_first") == "rare_first"
         groups.sort(key=lambda g: strategy.RARITY_RANK.get(g["rarity"], 99), reverse=rare_first)
         cap = int(self.settings.recycle.get("max_per_call", 20))
         if target_ink is not None:
-            log.info("Recyclage à la demande : viser %d encre (actuel %d).",
+            log.info("On-demand recycling: targeting %d ink (currently %d).",
                      target_ink, self.resources.get("ink", 0))
 
         retry_after = float(self.settings.engine.get("recycle_retry_minutes", 30.0)) * 60
@@ -205,11 +205,11 @@ class ActionsMixin:
                 break
             r = g["rarity"]
             card_cap = g["surplus"]
-            if reserve_mode == "missing":   # plafonné par le budget restant de la rareté
+            if reserve_mode == "missing":   # capped by the rarity's remaining budget
                 card_cap = min(card_cap, rarity_budget.get(r, 0) - rarity_used.get(r, 0))
             if card_cap <= 0:
                 continue
-            got = 0   # nb recyclé pour CE type (≤ card_cap)
+            got = 0   # number recycled for THIS type (<= card_cap)
             for pid in g["pulls"]:
                 if got >= card_cap:
                     break
@@ -223,35 +223,35 @@ class ActionsMixin:
                     res = await self.client.recycle([pid], retry_5xx=False, retry_429=False)
                 except ApiError as exc:
                     if getattr(exc, "status", None) == 429:
-                        # 429 = QUOTA JOURNALIER de recyclage atteint (~200/jour) : toutes les
-                        # cartes renverraient 429. On met le recyclage en pause longue (au lieu de
-                        # marteler carte par carte) ; l'ouverture, elle, continue en parallèle.
+                        # 429 = DAILY recycle quota reached (~200/day): every card would return
+                        # 429. We put recycling on a long pause (instead of hammering card by
+                        # card); opening keeps going in parallel.
                         cd = float(self.settings.engine.get("recycle_quota_cooldown_minutes", 60.0)) * 60
                         self._recycle_quota_until = time.time() + cd
                         self.db.set_kv("recycle_quota_until", str(self._recycle_quota_until))
-                        self._emit("recycle", "Quota journalier de recyclage atteint — recyclage en "
-                                   f"pause {int(cd / 60)} min (l'ouverture continue).", level="warn")
+                        self._emit("recycle", "Daily recycle quota reached — recycling paused "
+                                   f"for {int(cd / 60)} min (opening continues).", level="warn")
                         stop = True
                         break
                     body = getattr(exc, "body", "") or ""
                     if getattr(exc, "status", None) == 400 and (
                             "cards_not_found" in body or "cannot_recycle_last_copy" in body):
-                        # 400 BÉNIN : exemplaire déjà recyclé (liste /duplicates en retard) ou il ne
-                        # reste qu'1 copie (compte périmé). Ce n'est PAS une erreur : on marque le
-                        # pullId comme « terminé » (plus jamais re-tenté) et on passe, sans alarme.
+                        # BENIGN 400: copy already recycled (stale /duplicates list) or only 1
+                        # copy left (stale count). This is NOT an error: mark the pullId as
+                        # "done" (never retried again) and move on, without alarm.
                         self._recycle_done.add(pid)
                         reason = "cards_not_found" if "cards_not_found" in body else "cannot_recycle_last_copy"
-                        log.debug("Recyclage : exemplaire %s (%s) ignoré (400 %s — déjà recyclé / "
-                                  "dernière copie).", g["card_id"], g["rarity"], reason)
+                        log.debug("Recycling: copy %s (%s) skipped (400 %s — already recycled / "
+                                  "last copy).", g["card_id"], g["rarity"], reason)
                         continue
-                    # 500 (ou autre 4xx inattendu) : exemplaire non recyclable (verrouillé côté
-                    # serveur) → cooldown croissant persisté ; on tente l'exemplaire SUIVANT.
+                    # 500 (or other unexpected 4xx): non-recyclable copy (locked server-side)
+                    # -> growing persisted cooldown; try the NEXT copy.
                     now_f = time.time()
                     retry_at = self.db.mark_recycle_failure(pid, g["card_id"], g["rarity"],
                                                             retry_after, now_f)
                     self._recycle_skip[pid] = retry_at
                     failed += 1
-                    log.debug("Recyclage : exemplaire %s (%s) non recyclable, réessai à +%d min — %s",
+                    log.debug("Recycling: copy %s (%s) not recyclable, retry at +%d min — %s",
                               g["card_id"], g["rarity"], int((retry_at - now_f) / 60), exc)
                     continue
                 total_ink += res.get("inkEarned", 0)
@@ -262,26 +262,26 @@ class ActionsMixin:
                     self.db.decrement_inventory(g["series_id"], g["card_id"], by=1)
                 self._recycle_skip.pop(pid, None)
                 self.db.clear_recycle_failure(pid)
-                self._recycle_done.add(pid)   # ne plus jamais le re-soumettre (liste /duplicates en retard)
+                self._recycle_done.add(pid)   # never resubmit it (stale /duplicates list)
                 recycled.append(pid)
                 got += 1
                 rarity_used[r] = rarity_used.get(r, 0) + 1
 
         if not recycled:
             if failed:
-                self._emit("recycle", f"{failed} carte(s) en erreur 500 — réessai dans "
+                self._emit("recycle", f"{failed} card(s) with a 500 error — retry in "
                            f"{int(retry_after/60)} min.", level="warn")
             return 0
-        self.recycled_total += len(recycled)   # suivi multi-comptes
-        suffix = f" ({failed} en erreur, réessai +{int(retry_after/60)} min)" if failed else ""
+        self.recycled_total += len(recycled)   # multi-account tracking
+        suffix = f" ({failed} failed, retry +{int(retry_after/60)} min)" if failed else ""
         if new_balance is not None:
             self.resources["ink"] = new_balance
-        self._emit("recycle", f"{len(recycled)} doublon(s) recyclé(s) (+{total_ink} encre){suffix}",
+        self._emit("recycle", f"{len(recycled)} duplicate(s) recycled (+{total_ink} ink){suffix}",
                    ink_delta=total_ink, detail={"new_balance": new_balance, "failed": failed})
         self._push_resources()
         self._push_progress()
-        # On vient de gagner de l'encre et il n'y a plus de packs → réveiller l'ouverture pour
-        # qu'elle tente l'achat TOUT DE SUITE (vraie coordination entre tâches parallèles).
+        # We just earned ink and there are no packs left -> wake the opener so it tries the
+        # purchase RIGHT AWAY (real coordination between parallel tasks).
         if total_ink and self.resources.get("total_available", 0) <= 0:
             self._wake_opener()
         return len(recycled)

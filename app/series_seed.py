@@ -1,7 +1,7 @@
-"""Données de référence des séries (noms officiels + taille du set), fournies par l'utilisateur.
+"""Reference data for the series (official names + set size), provided by the user.
 
-Évite de dépendre d'un appel réseau pour afficher des noms corrects et le bon
-dénominateur de complétion dès le premier rendu.
+Avoids depending on a network call to show correct names and the right
+completion denominator from the very first render.
 """
 
 SERIES_SEED: dict[str, dict] = {
@@ -19,6 +19,6 @@ SERIES_SEED: dict[str, dict] = {
     "world-culture":         {"name": "Living Heritage",     "size": 168},
 }
 
-# Palette de repli par série (couleurs réelles écrasées dès la 1re ouverture via /api/packs/open).
+# Fallback palette per series (real colors overwritten on the first open via /api/packs/open).
 DEFAULT_PRIMARY = "#8b6914"
 DEFAULT_ACCENT = "#d4a843"

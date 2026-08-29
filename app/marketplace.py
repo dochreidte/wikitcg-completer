@@ -1,14 +1,14 @@
-"""Logique marketplace (phase 2) — fonctions pures, testables sans réseau.
+"""Marketplace logic (phase 2) — pure functions, testable without network.
 
-Objectif principal demandé : garder en permanence le maximum d'annonces actives
-(5) pour maximiser les acquisitions en parallèle ("ne pas perdre de temps").
+Main requested goal: permanently keep the maximum number of active listings
+(5) to maximize parallel acquisitions ("don't waste time").
 
-Deux leviers :
-  * plan_listings   — quelles annonces CRÉER pour remplir les emplacements libres ;
-  * plan_fulfillments — quelles annonces d'autrui HONORER pour acquérir mes manquantes.
+Two levers:
+  * plan_listings     — which listings to CREATE to fill the free slots;
+  * plan_fulfillments — which listings of others to FULFILL to acquire my missing cards.
 
-Règle de rareté « je donne (offered) -> je reçois (wanted) » : voir strategy.py.
-On offre toujours la carte de la rareté la PLUS FAIBLE éligible (préserve la valeur).
+Rarity rule "I give (offered) -> I receive (wanted)": see strategy.py.
+We always offer the card of the LOWEST eligible rarity (preserves value).
 """
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ from .strategy import offer_rarities_for_target
 
 
 def _pick_offer(target_rarity: str, avail: dict, used: dict) -> dict | None:
-    """Choisit le doublon à offrir pour viser une carte de `target_rarity` :
-    la rareté éligible la plus faible dont il me reste un exemplaire disponible.
-    `avail` : {card_id: {rarity, series_id, avail}} ; `used` : {card_id: déjà engagé ce tour}.
+    """Picks the duplicate to offer in order to target a card of `target_rarity`:
+    the lowest eligible rarity for which I still have a copy available.
+    `avail`: {card_id: {rarity, series_id, avail}}; `used`: {card_id: already committed this round}.
     """
-    for rar in offer_rarities_for_target(target_rarity):          # faible -> fort
-        for cid in sorted(avail):                                  # déterministe
+    for rar in offer_rarities_for_target(target_rarity):          # low -> high
+        for cid in sorted(avail):                                  # deterministic
             info = avail[cid]
             if info["rarity"] == rar and info["avail"] - used.get(cid, 0) > 0:
                 return {"card_id": cid, "series_id": info["series_id"]}
@@ -32,20 +32,19 @@ def plan_listings(missing_by_series: dict[str, list[dict]], dups: list[dict],
                   committed_by_type: dict[str, int], existing_wanted: set[str],
                   n_needed: int, progress: list[dict],
                   prefer_near_completion: bool = True) -> list[dict]:
-    """Renvoie jusqu'à `n_needed` annonces à créer :
+    """Returns up to `n_needed` listings to create:
         [{offered_type, offered_series, wanted_card, wanted_series}]
 
-    Priorité aux séries proches de la complétion (acquisition ciblée quand il reste
-    peu de cartes).
+    Priority to series near completion (targeted acquisition when few cards remain).
 
-    INVARIANT (règle utilisateur) : on n'offre QUE des cartes possédées en plusieurs
-    exemplaires, en gardant toujours ≥ 1 exemplaire. → disponible = quantity - 1 - déjà_engagé
-    (`dups` ne contient que des cartes quantity ≥ 2 ; cf. Database.all_duplicates).
+    INVARIANT (user rule): we only offer cards owned in multiple copies, always
+    keeping >= 1 copy. -> available = quantity - 1 - already_committed
+    (`dups` only contains cards with quantity >= 2; cf. Database.all_duplicates).
     """
     if n_needed <= 0:
         return []
 
-    # Disponibilités à offrir, par type de carte.
+    # Availability to offer, per card type.
     avail: dict[str, dict] = {}
     for d in dups:
         a = d["quantity"] - 1 - committed_by_type.get(d["card_id"], 0)
@@ -54,7 +53,7 @@ def plan_listings(missing_by_series: dict[str, list[dict]], dups: list[dict],
 
     order = [p for p in progress if p["missing"] > 0]
     if prefer_near_completion:
-        order.sort(key=lambda p: p["missing"])        # le moins de manquantes d'abord
+        order.sort(key=lambda p: p["missing"])        # fewest missing first
 
     plans: list[dict] = []
     used: dict[str, int] = {}
@@ -80,14 +79,13 @@ def plan_listings(missing_by_series: dict[str, list[dict]], dups: list[dict],
 
 def plan_fulfillments(browse_listings: list[dict], my_missing: set[str],
                       spare_by_type: dict[str, int], max_n: int) -> list[dict]:
-    """Annonces d'autrui à honorer. Renvoie [{listing_id, gain_card, give_card}].
+    """Listings of others to fulfill. Returns [{listing_id, gain_card, give_card}].
 
-    INVARIANT (règle utilisateur) — on honore une annonce SEULEMENT si les DEUX conditions
-    sont vraies :
-      (a) je possède la carte DEMANDÉE en double  → `spare_by_type[wanted] ≥ 1`
-          (spare = quantity - 1, issu d'all_duplicates : quantity ≥ 2 → je garde 1 exemplaire) ;
-      (b) je ne possède PAS déjà la carte OFFERTE  → `offered ∈ my_missing`.
-    `reserved`/`gained` évitent d'engager deux fois le même exemplaire / de gagner un doublon.
+    INVARIANT (user rule) — we fulfill a listing ONLY if BOTH conditions hold:
+      (a) I own the REQUESTED card as a duplicate  -> `spare_by_type[wanted] >= 1`
+          (spare = quantity - 1, from all_duplicates: quantity >= 2 -> I keep 1 copy);
+      (b) I do NOT already own the OFFERED card     -> `offered in my_missing`.
+    `reserved`/`gained` prevent committing the same copy twice / gaining a duplicate.
     """
     out: list[dict] = []
     reserved: dict[str, int] = {}
@@ -95,8 +93,8 @@ def plan_fulfillments(browse_listings: list[dict], my_missing: set[str],
     for l in browse_listings:
         if len(out) >= max_n:
             break
-        offered = l.get("offered_card_type")      # ce que je gagnerais
-        wanted = l.get("wanted_card_id")           # ce que je dois donner
+        offered = l.get("offered_card_type")      # what I would gain
+        wanted = l.get("wanted_card_id")           # what I must give
         lid = l.get("id")
         if not (offered and wanted and lid):
             continue

@@ -1,13 +1,18 @@
-# Secrets : config.toml contient le cookie de session (JWT) — NE PAS versionner.
-# Seul config.example.toml (sans secret) doit l'être.
+# Secrets: config.toml contains the session cookie (JWT) — DO NOT commit.
+# Only config.example.toml (without secrets) should be committed.
 config.toml
-# Multi-comptes : accounts.toml contient les cookies de plusieurs comptes — NE PAS versionner.
-# Seul accounts.example.toml (sans secret) doit l'être.
+# Multi-account: accounts.toml contains the cookies of several accounts — DO NOT commit.
+# Only accounts.example.toml (without secrets) should be committed.
 accounts.toml
+# Environment-based secrets (WIKITCG_SESSION, WIKITCG_EXTRA_COOKIES, ...)
+.env
+.env.*
 
-# Base de données & logs (peuvent contenir des données de session/historique)
+# Database & logs (may contain session/history data)
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 *.log
 *.log.*
 
@@ -18,7 +23,16 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# OS / éditeurs
+# OS / editors
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
+*.swp
+
+# Internal / agent-only files — not needed in the published repo.
+# CLAUDE.md: guidance for Claude Code. docs/: internal analysis, logic notes and
+# roadmap (docs/REPORT.md also references unrelated local project folders).
+CLAUDE.md
+.claude/
+docs/

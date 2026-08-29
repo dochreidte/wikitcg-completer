@@ -1,5 +1,5 @@
-"""Tests du vrai client HTTP via httpx.MockTransport (sans réseau).
-Couvre le parsing des doublons et la taxonomie d'erreurs (429/5xx/401)."""
+"""Real HTTP client tests via httpx.MockTransport (no network).
+Covers duplicates parsing and the error taxonomy (429/5xx/401)."""
 import unittest
 
 import httpx
@@ -9,7 +9,7 @@ from app.config import Settings, _DEFAULTS, _deep_merge
 
 
 def _client(handler):
-    """Client avec throttle/backoff quasi nuls + transport simulé."""
+    """Client with near-zero throttle/backoff + simulated transport."""
     settings = Settings(raw=_deep_merge(_DEFAULTS, {
         "throttle": {"read_interval": 0, "read_jitter": 0, "min_interval": 0, "jitter": 0,
                      "cooldown_every": 0, "cooldown_seconds": 0, "cooldown_jitter": 0},
@@ -59,7 +59,7 @@ class Recycle(unittest.IsolatedAsyncioTestCase):
         try:
             with self.assertRaises(ApiError):
                 await c.recycle(["p"], retry_5xx=False)
-            self.assertEqual(calls["n"], 1)   # AUCUN retry
+            self.assertEqual(calls["n"], 1)   # NO retry
         finally:
             await c.aclose()
 
@@ -75,7 +75,7 @@ class ErrorTaxonomy(unittest.IsolatedAsyncioTestCase):
         c = _client(handler)
         try:
             self.assertEqual((await c.get_status())["ink"], 5)
-            self.assertEqual(calls["n"], 2)   # 1 échec + 1 succès
+            self.assertEqual(calls["n"], 2)   # 1 failure + 1 success
         finally:
             await c.aclose()
 

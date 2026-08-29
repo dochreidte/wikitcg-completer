@@ -1,4 +1,4 @@
-"""Tests d'intégration du moteur via FakeClient (sans réseau)."""
+"""Engine integration tests via FakeClient (no network)."""
 import json
 import os
 import time
@@ -14,34 +14,34 @@ def dup(card, rarity, pulls, series="s"):
 
 class RecyclePass(unittest.IsolatedAsyncioTestCase):
     async def test_skips_500_and_tries_other_copies(self):
-        # SR copies=4, réserve SR=1 -> surplus 2. p1 verrouillé (500) : on doit recycler
-        # 2 AUTRES exemplaires du même type (p2, p3) au lieu de gâcher le quota.
+        # SR copies=4, SR reserve=1 -> surplus 2. p1 locked (500): we must recycle
+        # 2 OTHER copies of the same type (p2, p3) instead of wasting the quota.
         client = FakeClient(dups=[dup("wiki-1", "SR", ["p1", "p2", "p3", "p4"])], locked={"p1"})
         eng, client, db, path = make_engine(client)
         try:
             n = await eng.recycle_pass()
-            self.assertEqual(n, 2)                              # surplus complet recyclé
-            self.assertEqual(client.recycled, ["p2", "p3"])     # p1 sauté, p2+p3 recyclés
-            self.assertIn("p1", db.recycle_skips())             # p1 mémorisé en base (cooldown)
+            self.assertEqual(n, 2)                              # full surplus recycled
+            self.assertEqual(client.recycled, ["p2", "p3"])     # p1 skipped, p2+p3 recycled
+            self.assertIn("p1", db.recycle_skips())             # p1 remembered in the db (cooldown)
             self.assertEqual(db.recycle_failures_summary()["total"], 1)
         finally:
             db.close(); os.remove(path)
 
     async def test_skip_rarities_never_recycled(self):
-        # recycle_skip_rarities=["LR"] : les LR ne sont jamais recyclées, les autres oui.
+        # recycle_skip_rarities=["LR"]: LR are never recycled, the others are.
         client = FakeClient(dups=[dup("wiki-lr", "LR", ["l1", "l2", "l3"]),
                                   dup("wiki-sr", "SR", ["s1", "s2", "s3"])])
         eng, client, db, path = make_engine(client, keep_spares={"LR": 0, "SR": 0},
                                             recycle_skip_rarities=["LR"])
         try:
             await eng.recycle_pass()
-            self.assertFalse(any(p.startswith("l") for p in client.recycled))  # aucune LR
-            self.assertTrue(all(p.startswith("s") for p in client.recycled))   # que des SR
+            self.assertFalse(any(p.startswith("l") for p in client.recycled))  # no LR
+            self.assertTrue(all(p.startswith("s") for p in client.recycled))   # only SR
         finally:
             db.close(); os.remove(path)
 
     async def test_all_copies_locked_recycles_nothing(self):
-        # Si TOUS les exemplaires d'un type sont verrouillés -> 0 recyclé, tous en cooldown.
+        # If ALL copies of a type are locked -> 0 recycled, all in cooldown.
         client = FakeClient(dups=[dup("wiki-1", "SR", ["p1", "p2", "p3"])], locked={"p1", "p2", "p3"})
         eng, client, db, path = make_engine(client)
         try:
@@ -51,26 +51,26 @@ class RecyclePass(unittest.IsolatedAsyncioTestCase):
             db.close(); os.remove(path)
 
     async def test_marketplace_reserve_keeps_a_spare(self):
-        # SR copies=2, keep_spares SR=0. Marketplace OFF -> recycle 1 ; ON -> garde 1 (recycle 0).
+        # SR copies=2, keep_spares SR=0. Marketplace OFF -> recycle 1; ON -> keep 1 (recycle 0).
         dups = [dup("wiki-1", "SR", ["p1", "p2"])]
         eng, client, db, path = make_engine(
             FakeClient(dups=dups), settings=make_settings(keep_spares={"SR": 0}))
         try:
-            self.assertEqual(await eng.recycle_pass(), 1)      # marketplace désactivée
+            self.assertEqual(await eng.recycle_pass(), 1)      # marketplace disabled
         finally:
             db.close(); os.remove(path)
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-1", "SR", ["p1", "p2"])]),
             settings=Settings_with_market(keep_spares={"SR": 0}))
         try:
-            self.assertEqual(await eng.recycle_pass(), 0)      # réserve marketplace -> rien
+            self.assertEqual(await eng.recycle_pass(), 0)      # marketplace reserve -> nothing
         finally:
             db.close(); os.remove(path)
 
     async def test_missing_mode_keeps_as_many_dups_as_missing(self):
-        # Mode "missing" : on garde, PAR RARETÉ, autant de doublons qu'il manque de cartes.
-        # 16 copies LR -> 15 doublons ; le catalogue a 3 LR jamais possédées (3 manquantes)
-        # -> budget = 15 - 3 = 12 exemplaires recyclés.
+        # "missing" mode: keep, PER RARITY, as many duplicates as there are missing cards.
+        # 16 LR copies -> 15 duplicates; the catalog has 3 LR never owned (3 missing)
+        # -> budget = 15 - 3 = 12 copies recycled.
         pulls = [f"p{i}" for i in range(16)]
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-lr", "LR", pulls)]),
@@ -85,72 +85,72 @@ class RecyclePass(unittest.IsolatedAsyncioTestCase):
             db.close(); os.remove(path)
 
     async def test_missing_mode_no_missing_recycles_all_dups(self):
-        # Aucune carte manquante de la rareté -> budget = tous les doublons (copies - 1).
+        # No missing card of the rarity -> budget = all duplicates (copies - 1).
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-sr", "SR", ["a", "b", "c", "d"])]),
             settings=make_settings(recycle_reserve_mode="missing"))
         try:
-            self.assertEqual(await eng.recycle_pass(), 3)   # 4 copies -> 3 doublons, 0 manquante
+            self.assertEqual(await eng.recycle_pass(), 3)   # 4 copies -> 3 duplicates, 0 missing
         finally:
             db.close(); os.remove(path)
 
     async def test_benign_400_ignored_not_retried(self):
-        # 400 cards_not_found (exemplaire déjà recyclé, /duplicates en retard) : on l'ignore SANS
-        # le compter comme erreur à réessayer, et on le marque « terminé » (plus re-soumis).
+        # 400 cards_not_found (copy already recycled, stale /duplicates): we ignore it WITHOUT
+        # counting it as an error to retry, and we mark it "done" (never resubmitted).
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-sr", "SR", ["a", "b", "c"])], notfound={"a"}),
             settings=make_settings(keep_spares={"SR": 0}))
         try:
             n = await eng.recycle_pass()
-            self.assertEqual(n, 2)                                  # b, c recyclés ; a (400) ignoré
+            self.assertEqual(n, 2)                                  # b, c recycled; a (400) ignored
             self.assertEqual(client.recycled, ["b", "c"])
-            self.assertIn("a", eng._recycle_done)                   # ne sera plus re-tenté
-            self.assertEqual(db.recycle_failures_summary()["total"], 0)  # PAS compté comme échec 500
+            self.assertIn("a", eng._recycle_done)                   # will not be retried
+            self.assertEqual(db.recycle_failures_summary()["total"], 0)  # NOT counted as a 500 failure
         finally:
             db.close(); os.remove(path)
 
     async def test_recycle_priority_rare_first(self):
-        # "rare_first" (farm pur) : on recycle les plus rares d'abord (LR avant SR) pour extraire
-        # le maximum d'encre sous le quota journalier. SR & LR ont chacune 2 doublons recyclables.
+        # "rare_first" (pure farm): recycle the rarest first (LR before SR) to extract the most
+        # ink under the daily quota. SR & LR each have 2 recyclable duplicates.
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-sr", "SR", ["s1", "s2", "s3"]),
                              dup("wiki-lr", "LR", ["l1", "l2", "l3"])]),
             settings=make_settings(keep_spares={"SR": 0, "LR": 0}, recycle_priority="rare_first"))
         try:
             await eng.recycle_pass()
-            self.assertEqual(client.recycled, ["l1", "l2", "s1", "s2"])   # LR d'abord
+            self.assertEqual(client.recycled, ["l1", "l2", "s1", "s2"])   # LR first
         finally:
             db.close(); os.remove(path)
 
     async def test_recycle_priority_common_first_default(self):
-        # Défaut "common_first" : on sacrifie les moins rares d'abord (SR avant LR) — préserve les LR.
+        # Default "common_first": sacrifice the least rare first (SR before LR) — preserves LR.
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-sr", "SR", ["s1", "s2", "s3"]),
                              dup("wiki-lr", "LR", ["l1", "l2", "l3"])]),
             settings=make_settings(keep_spares={"SR": 0, "LR": 0}))
         try:
             await eng.recycle_pass()
-            self.assertEqual(client.recycled, ["s1", "s2", "l1", "l2"])   # SR d'abord
+            self.assertEqual(client.recycled, ["s1", "s2", "l1", "l2"])   # SR first
         finally:
             db.close(); os.remove(path)
 
     async def test_quota_429_stops_pass_and_arms_cooldown(self):
-        # Un 429 sur /recycle = quota JOURNALIER atteint : on stoppe la passe tout de suite et on
-        # arme un cooldown (au lieu de marteler) ; la carte n'est PAS comptée comme erreur 500.
+        # A 429 on /recycle = DAILY quota reached: stop the pass right away and arm a cooldown
+        # (instead of hammering); the card is NOT counted as a 500 error.
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-sr", "SR", ["a", "b", "c", "d"])], quota_after=2),
             settings=make_settings(keep_spares={"SR": 0}))
         try:
             n = await eng.recycle_pass()
-            self.assertEqual(n, 2)                       # 2 recyclées, puis 429 -> stop
+            self.assertEqual(n, 2)                       # 2 recycled, then 429 -> stop
             self.assertEqual(client.recycled, ["a", "b"])
-            self.assertGreater(eng._recycle_quota_until, time.time())     # cooldown armé
-            self.assertEqual(db.recycle_failures_summary()["total"], 0)   # pas marquée 500
+            self.assertGreater(eng._recycle_quota_until, time.time())     # cooldown armed
+            self.assertEqual(db.recycle_failures_summary()["total"], 0)   # not marked 500
         finally:
             db.close(); os.remove(path)
 
     async def test_recycle_skipped_during_quota_cooldown(self):
-        # Pendant le cooldown quota, la passe ne fait RIEN (n'appelle même pas /recycle).
+        # During the quota cooldown, the pass does NOTHING (doesn't even call /recycle).
         eng, client, db, path = make_engine(
             FakeClient(dups=[dup("wiki-sr", "SR", ["a", "b"])]),
             settings=make_settings(keep_spares={"SR": 0}))
@@ -162,14 +162,14 @@ class RecyclePass(unittest.IsolatedAsyncioTestCase):
             db.close(); os.remove(path)
 
     async def test_recycle_wakes_opener_when_packs_empty(self):
-        # Encre gagnée + plus de packs -> on réveille la boucle d'ouverture pour acheter.
+        # Ink gained + no more packs -> wake the opening loop to buy.
         client = FakeClient(dups=[dup("wiki-1", "SR", ["p1", "p2", "p3"])])
         eng, client, db, path = make_engine(client)
         try:
             eng.resources = {"total_available": 0, "ink": 0}
             self.assertFalse(eng._wake.is_set())
             await eng.recycle_pass()
-            self.assertTrue(eng._wake.is_set())   # réveil posé
+            self.assertTrue(eng._wake.is_set())   # wake-up set
         finally:
             db.close(); os.remove(path)
 
@@ -178,7 +178,7 @@ class RecyclePass(unittest.IsolatedAsyncioTestCase):
         eng, client, db, path = make_engine(
             FakeClient(status={"ink": 0}, dups=dups), settings=make_settings(keep_spares={"SR": 0}))
         try:
-            n = await eng.recycle_pass(target_ink=80)          # 40 encre/carte -> 2 cartes
+            n = await eng.recycle_pass(target_ink=80)          # 40 ink/card -> 2 cards
             self.assertEqual(n, 2)
         finally:
             db.close(); os.remove(path)
@@ -229,7 +229,7 @@ class Mystery(unittest.IsolatedAsyncioTestCase):
         try:
             ok = await eng._try_open_mystery()
             self.assertFalse(ok)
-            self.assertGreater(eng._mystery_due_at, time.time())   # réessai plus tard
+            self.assertGreater(eng._mystery_due_at, time.time())   # retry later
         finally:
             db.close(); os.remove(path)
 
@@ -245,26 +245,26 @@ class Mystery(unittest.IsolatedAsyncioTestCase):
 
 class Marketplace(unittest.IsolatedAsyncioTestCase):
     async def test_fulfilled_credited_and_not_reoffered(self):
-        # Annonce honorée -> on crédite la carte voulue (plus ré-offerte) ; traité une seule fois.
+        # Listing fulfilled -> credit the wanted card (no longer re-offered); handled once.
         mine = [{"id": "L1", "status": "fulfilled", "wanted_card_id": "wiki-W",
                  "wanted_series_id": "s", "offered_card_type": "wiki-O", "offered_series": "s"}]
         eng, client, db, path = make_engine(FakeClient(mine=mine), settings=Settings_with_market())
         try:
             await eng.marketplace_pass()
-            self.assertTrue(db.owns_card("wiki-W"))                     # crédité
+            self.assertTrue(db.owns_card("wiki-W"))                     # credited
             self.assertIn("L1", json.loads(db.get_kv("fulfilled_seen", "[]")))
-            await eng.marketplace_pass()                                # 2e passe : pas de re-crédit
+            await eng.marketplace_pass()                                # 2nd pass: no re-credit
         finally:
             db.close(); os.remove(path)
 
     async def test_old_listing_cancelled(self):
-        old_ms = (time.time() - 2 * 86400) * 1000   # créée il y a 2 jours
+        old_ms = (time.time() - 2 * 86400) * 1000   # created 2 days ago
         mine = [{"id": "L1", "status": "active", "wanted_card_id": "wiki-W",
                  "wanted_series_id": "s", "offered_card_type": "wiki-O", "created_at": old_ms}]
         eng, client, db, path = make_engine(FakeClient(mine=mine), settings=Settings_with_market())
         try:
             await eng.marketplace_pass()
-            self.assertIn("L1", client.cancelled)                      # annulée car > 1 jour
+            self.assertIn("L1", client.cancelled)                      # cancelled because > 1 day
         finally:
             db.close(); os.remove(path)
 

@@ -1,4 +1,4 @@
-"""Bus d'événements minimal (pub/sub) pour pousser les actions vers le WebSocket."""
+"""Minimal pub/sub event bus for pushing actions to the WebSocket."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ class EventBus:
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                # consommateur lent : on jette l'événement le plus ancien
+                # slow consumer: drop the oldest event
                 try:
                     q.get_nowait()
                     q.put_nowait(event)

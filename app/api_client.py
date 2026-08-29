@@ -1,13 +1,13 @@
-"""Client API asynchrone pour wikitcg.net.
+"""Async API client for wikitcg.net.
 
-Conçu pour être robuste et extensible :
-  * un throttle global (intervalle minimal + jitter) entre TOUTES les requêtes ;
-  * un backoff exponentiel + jitter sur 429 / 5xx / erreurs réseau ;
-  * une taxonomie d'erreurs claire pour décider du comportement de retry ;
-  * journalisation systématique.
+Designed to be robust and extensible:
+  * a global throttle (minimum interval + jitter) between ALL requests;
+  * exponential backoff + jitter on 429 / 5xx / network errors;
+  * a clear error taxonomy to decide retry behavior;
+  * systematic logging.
 
-Ajouter un nouvel endpoint = ajouter une petite méthode qui appelle self._request().
-Ajouter une nouvelle règle d'erreur = l'aiguiller dans _classify() / _request().
+Adding a new endpoint = add a small method that calls self._request().
+Adding a new error rule = route it inside _request().
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ log = logging.getLogger("wikitcg.api")
 
 
 def _extract_list(data, list_key: str = "") -> list:
-    """Trouve le tableau d'éléments dans une réponse, avec clé explicite ou autodétection."""
+    """Find the array of items in a response, via an explicit key or autodetection."""
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
@@ -36,7 +36,7 @@ def _extract_list(data, list_key: str = "") -> list:
 
 
 def _pick(item: dict, explicit: str, candidates: list[str]):
-    """Renvoie la 1re valeur trouvée : champ explicite (config) sinon candidats par défaut."""
+    """Return the first value found: the explicit field (config), otherwise the default candidates."""
     if explicit and explicit in item:
         return item[explicit]
     for c in candidates:
@@ -46,23 +46,23 @@ def _pick(item: dict, explicit: str, candidates: list[str]):
 
 
 def _parse_cookies(raw: str) -> dict:
-    """Parse une chaîne d'en-tête Cookie ('k=v; k2=v2') en dict. Vide -> {}."""
+    """Parse a Cookie header string ('k=v; k2=v2') into a dict. Empty -> {}."""
     out: dict = {}
     for part in (raw or "").split(";"):
         part = part.strip()
         if "=" in part:
             k, v = part.split("=", 1)
             k = k.strip()
-            if k and k != "wtcg_session":   # le jwt est géré séparément
+            if k and k != "wtcg_session":   # the JWT is handled separately
                 out[k] = v.strip()
     return out
 
 
 # --------------------------------------------------------------------------- #
-#  Taxonomie d'erreurs
+#  Error taxonomy
 # --------------------------------------------------------------------------- #
 class ApiError(Exception):
-    """Erreur applicative non récupérable (4xx hors auth/429)."""
+    """Non-recoverable application error (4xx other than auth/429)."""
     def __init__(self, message: str, *, status: int | None = None, body: str | None = None):
         super().__init__(message)
         self.status = status
@@ -70,23 +70,23 @@ class ApiError(Exception):
 
 
 class AuthError(ApiError):
-    """401/403 — cookie expiré / non autorisé. On arrête, ça ne se règle pas par un retry."""
+    """401/403 — expired/unauthorized cookie. We stop; a retry won't fix it."""
 
 
 class RateLimited(Exception):
-    """429 — interne, déclenche le backoff."""
+    """429 — internal, triggers the backoff."""
     def __init__(self, retry_after: float | None = None):
         super().__init__("429 Too Many Requests")
         self.retry_after = retry_after
 
 
 # --------------------------------------------------------------------------- #
-#  Throttle global
+#  Global throttle
 # --------------------------------------------------------------------------- #
 class Throttle:
-    """Espacement entre requêtes. Deux régimes :
-      * lectures (GET) : court délai (la synchro reste rapide) ;
-      * actions (POST) : délai plus long + pause périodique (anti-429 sur les rafales d'ouverture).
+    """Spacing between requests. Two regimes:
+      * reads (GET): short delay (sync stays fast);
+      * actions (POST): longer delay + periodic pause (anti-429 on bursts of openings).
     """
 
     def __init__(self, min_interval: float, jitter: float,
@@ -104,8 +104,8 @@ class Throttle:
         self._lock = asyncio.Lock()
 
     async def wait(self, *, mode: str = "action", heavy: bool = False) -> None:
-        """`mode="read"` pour les GET (rapide), `"action"` pour les POST.
-        `heavy=True` compte l'action dans le cooldown (ex. ouverture de pack)."""
+        """`mode="read"` for GET requests (fast), `"action"` for POST.
+        `heavy=True` counts the action toward the cooldown (e.g. opening a pack)."""
         async with self._lock:
             if mode == "read":
                 gap = self.read_interval + random.uniform(0, self.read_jitter)
@@ -118,7 +118,7 @@ class Throttle:
                 self._counter += 1
                 if self._counter % self.cooldown_every == 0:
                     pause = self.cooldown_seconds + random.uniform(0, self.cooldown_jitter)
-                    log.info("Cooldown anti-429 : pause de %.0f s", pause)
+                    log.info("Anti-429 cooldown: pausing for %.0f s", pause)
                     await asyncio.sleep(pause)
             self._last = time.monotonic()
 
@@ -149,18 +149,18 @@ class WikiTCGClient:
         )
         self._host = httpx.URL(self.base_url).host
         self._session = api.get("session_cookie", "")
-        # Callback optionnel appelé si le cookie de session est rafraîchi (persistance).
+        # Optional callback invoked if the session cookie is refreshed (persistence).
         self.session_sink = None
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
     # ------------------------------------------------------------------ #
-    #  Session (cookie wtcg_session) — mise à jour en direct
+    #  Session (wtcg_session cookie) — live update
     # ------------------------------------------------------------------ #
     def _read_cookie(self, name: str) -> str | None:
-        """Lit un cookie en tolérant les DOUBLONS (plusieurs domaines/chemins) : httpx lève
-        sinon CookieConflict. On renvoie de préférence la valeur liée au host."""
+        """Read a cookie tolerating DUPLICATES (several domains/paths): otherwise httpx
+        raises CookieConflict. We prefer the value bound to the host."""
         try:
             return self._client.cookies.get(name)
         except httpx.CookieConflict:
@@ -178,28 +178,28 @@ class WikiTCGClient:
         return self._read_cookie("wtcg_session") or self._session
 
     def _set_cookie(self, name: str, value: str) -> None:
-        """Remplace proprement un cookie : on retire d'abord TOUTES ses variantes (sinon httpx
-        accumule plusieurs cookies de même nom -> CookieConflict)."""
+        """Cleanly replace a cookie: first remove ALL of its variants (otherwise httpx
+        accumulates several cookies with the same name -> CookieConflict)."""
         try:
             self._client.cookies.delete(name)
         except Exception:
             pass
-        # filet : purge manuelle de toute variante restante dans le jar
+        # safety net: manually purge any remaining variant in the jar
         for ck in [c for c in self._client.cookies.jar if c.name == name]:
             self._client.cookies.jar.clear(ck.domain, ck.path, ck.name)
-        self._client.cookies.set(name, value)   # domaine par défaut, comme à l'initialisation
+        self._client.cookies.set(name, value)   # default domain, same as at initialization
 
     def update_session(self, session_cookie: str, extra_cookies: str = "") -> None:
-        """Remplace le(s) cookie(s) de session SANS recréer le client (effet immédiat).
-        Il n'y a que deux cookies à gérer : wtcg_session et (optionnel) cf_clearance."""
+        """Replace the session cookie(s) WITHOUT recreating the client (takes effect immediately).
+        Only two cookies to manage: wtcg_session and (optionally) cf_clearance."""
         self._set_cookie("wtcg_session", session_cookie)
         for k, v in _parse_cookies(extra_cookies).items():
             self._set_cookie(k, v)
         self._session = session_cookie
-        log.info("Cookie(s) de session mis à jour (effet immédiat).")
+        log.info("Session cookie(s) updated (takes effect immediately).")
 
     # ------------------------------------------------------------------ #
-    #  Cœur : requête + retry/backoff
+    #  Core: request + retry/backoff
     # ------------------------------------------------------------------ #
     async def _request(self, method: str, path: str, *, json_body: Any = None,
                        params: dict | None = None, heavy: bool = False,
@@ -215,65 +215,65 @@ class WikiTCGClient:
                 resp = await self._client.request(method, path, json=json_body, params=params)
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 attempt += 1
-                log.warning("✗ %s %s — réseau %s (essai %d/%d)", method, path,
+                log.warning("✗ %s %s — network %s (attempt %d/%d)", method, path,
                             exc.__class__.__name__, attempt, self.retry_cfg["max_retries"])
                 if attempt > self.retry_cfg["max_retries"]:
-                    raise ApiError(f"Réseau indisponible après {attempt} essais : {exc}") from exc
-                await self._backoff(attempt, reason=f"réseau ({exc.__class__.__name__})")
+                    raise ApiError(f"Network unavailable after {attempt} attempts: {exc}") from exc
+                await self._backoff(attempt, reason=f"network ({exc.__class__.__name__})")
                 continue
 
             status = resp.status_code
             ms = (time.monotonic() - t0) * 1000
             log.debug("← %s %s %d (%.0f ms)", method, path, status, ms)
 
-            # Défensif : si le serveur renvoie un cookie de session rafraîchi, on le capte.
+            # Defensive: if the server returns a refreshed session cookie, capture it.
             fresh = self._read_cookie("wtcg_session")
             if fresh and fresh != self._session:
                 self._session = fresh
-                log.info("Cookie de session rafraîchi par le serveur.")
+                log.info("Session cookie refreshed by the server.")
                 if self.session_sink:
                     try:
                         self.session_sink(fresh)
                     except Exception:
-                        log.warning("session_sink a échoué", exc_info=True)
+                        log.warning("session_sink failed", exc_info=True)
 
             if status == 429:
-                if not retry_429:   # ex. recyclage : un 429 = quota journalier atteint, inutile d'insister
-                    log.warning("⚠ %s %s → 429 (sans retry — quota ?) — %s", method, path, resp.text[:200])
-                    raise ApiError("Quota/limite de recyclage atteint (429)", status=429,
+                if not retry_429:   # e.g. recycling: a 429 = daily quota reached, no point insisting
+                    log.warning("⚠ %s %s → 429 (no retry — quota?) — %s", method, path, resp.text[:200])
+                    raise ApiError("Recycle quota/limit reached (429)", status=429,
                                    body=resp.text[:300])
                 attempt += 1
                 if attempt > self.retry_cfg["max_retries"]:
-                    raise ApiError("429 persistant : limite de débit non levée", status=429)
+                    raise ApiError("Persistent 429: rate limit not lifted", status=429)
                 ra = resp.headers.get("Retry-After")
                 retry_after = float(ra) if (ra and ra.isdigit()) else None
                 await self._backoff(attempt, reason="429 rate-limit", retry_after=retry_after)
                 continue
 
             if status in (401, 403):
-                log.error("⛔ %s %s → %d : authentification refusée — %s",
+                log.error("⛔ %s %s → %d: authentication rejected — %s",
                           method, path, status, resp.text[:200])
-                raise AuthError("Authentification refusée (cookie wtcg_session expiré ?)",
+                raise AuthError("Authentication rejected (wtcg_session cookie expired?)",
                                 status=status, body=resp.text[:300])
 
             if 500 <= status < 600:
-                if not retry_5xx:   # ex. recyclage carte par carte : on saute vite la fautive
-                    log.warning("⚠ %s %s → %d (sans retry) — %s", method, path, status, resp.text[:200])
-                    raise ApiError(f"Erreur serveur {status}", status=status, body=resp.text[:300])
+                if not retry_5xx:   # e.g. card-by-card recycling: skip the failing one quickly
+                    log.warning("⚠ %s %s → %d (no retry) — %s", method, path, status, resp.text[:200])
+                    raise ApiError(f"Server error {status}", status=status, body=resp.text[:300])
                 attempt += 1
-                log.warning("⚠ %s %s → %d (essai %d/%d) — %s", method, path, status,
+                log.warning("⚠ %s %s → %d (attempt %d/%d) — %s", method, path, status,
                             attempt, self.retry_cfg["max_retries"], resp.text[:200])
                 if attempt > self.retry_cfg["max_retries"]:
-                    raise ApiError(f"Erreur serveur {status} persistante", status=status,
+                    raise ApiError(f"Persistent server error {status}", status=status,
                                    body=resp.text[:300])
-                await self._backoff(attempt, reason=f"serveur {status}")
+                await self._backoff(attempt, reason=f"server {status}")
                 continue
 
             if status >= 400:
-                log.warning("⚠ %s %s → %d : %s", method, path, status, resp.text[:200])
-                raise ApiError(f"Erreur API {status} sur {path}", status=status, body=resp.text[:300])
+                log.warning("⚠ %s %s → %d: %s", method, path, status, resp.text[:200])
+                raise ApiError(f"API error {status} on {path}", status=status, body=resp.text[:300])
 
-            # 2xx — les actions (POST) sont notées en INFO, les lectures restent en DEBUG.
+            # 2xx — actions (POST) are logged at INFO, reads stay at DEBUG.
             if mode == "action":
                 log.info("✓ %s %s → %d (%.0f ms)", method, path, status, ms)
             if not resp.content:
@@ -289,7 +289,7 @@ class WikiTCGClient:
         else:
             delay = min(self.retry_cfg["backoff_base"] ** attempt, self.retry_cfg["backoff_cap"])
             delay *= 1 + random.uniform(0, self.retry_cfg["backoff_jitter"])
-        log.warning("Backoff (%s) — essai %d, attente %.1f s", reason, attempt, delay)
+        log.warning("Backoff (%s) — attempt %d, waiting %.1f s", reason, attempt, delay)
         await asyncio.sleep(delay)
 
     # ------------------------------------------------------------------ #
@@ -314,7 +314,7 @@ class WikiTCGClient:
         return await self._request("GET", "/api/marketplace", params=params or {})
 
     # ------------------------------------------------------------------ #
-    #  Endpoints — écriture
+    #  Endpoints — write
     # ------------------------------------------------------------------ #
     async def open_pack(self, series_id: str) -> dict:
         return await self._request("POST", "/api/packs/open",
@@ -322,23 +322,23 @@ class WikiTCGClient:
 
     async def recycle(self, pull_ids: list[str], *, retry_5xx: bool = True,
                       retry_429: bool = True) -> dict:
-        # /api/cards/recycle attend la clé "cardIds" mais des id d'EXEMPLAIRES (pullIds).
-        # Réponse : {"recycled", "inkEarned", "newBalance"}. `retry_5xx=False` pour le
-        # recyclage carte par carte : on saute aussitôt une carte qui renvoie 500.
-        # `retry_429=False` : un 429 ici = quota journalier de recyclage atteint -> on lève
-        # tout de suite (le moteur met le recyclage en pause au lieu de marteler).
+        # /api/cards/recycle expects the "cardIds" key but with COPY ids (pullIds).
+        # Response: {"recycled", "inkEarned", "newBalance"}. `retry_5xx=False` for card-by-card
+        # recycling: skip a card that returns 500 right away.
+        # `retry_429=False`: a 429 here = daily recycle quota reached -> raise immediately
+        # (the engine pauses recycling instead of hammering).
         return await self._request("POST", "/api/cards/recycle",
                                    json_body={"cardIds": pull_ids},
                                    retry_5xx=retry_5xx, retry_429=retry_429)
 
     async def regen_packs(self, type_: str = "full") -> dict:
-        # Achat d'un restock à l'encre. Réponse : {success, newBalance, freePacks, totalAvailable}.
+        # Buy a restock with ink. Response: {success, newBalance, freePacks, totalAvailable}.
         return await self._request("POST", "/api/packs/regen", json_body={"type": type_})
 
     async def marketplace_create(self, offered_type: str, offered_series: str,
                                  wanted_card: str, wanted_series: str) -> dict:
-        # Contrat confirmé via le frontend du site : on offre un TYPE de carte
-        # (offeredCardTypeId = card_id) ; le serveur choisit l'exemplaire à engager.
+        # Contract confirmed via the site frontend: we offer a card TYPE
+        # (offeredCardTypeId = card_id); the server picks the copy to commit.
         return await self._request("POST", "/api/marketplace/create", json_body={
             "offeredCardTypeId": offered_type, "offeredSeriesId": offered_series,
             "wantedCardId": wanted_card, "wantedSeriesId": wanted_series})
@@ -350,18 +350,18 @@ class WikiTCGClient:
         return await self._request("POST", f"/api/marketplace/{listing_id}/cancel")
 
     # ------------------------------------------------------------------ #
-    #  Doublons (recyclage) — GET /api/cards/duplicates (lot limité, global)
+    #  Duplicates (recycling) — GET /api/cards/duplicates (limited batch, global)
     # ------------------------------------------------------------------ #
     async def get_duplicates(self, recycle_cfg: dict) -> list[dict]:
-        """Renvoie une liste normalisée de doublons :
+        """Return a normalized list of duplicates:
             [{card_id, series_id, rarity, copies, pull_ids:[...], title}]
 
-        Forme réelle de /api/cards/duplicates (une ligne par type de carte) :
+        Actual shape of /api/cards/duplicates (one row per card type):
             {"duplicates": [{"cardId","seriesId","rarity","copies","pullIds":[…],"title"}]}
-        chaque `pullIds[i]` est l'id hex d'un EXEMPLAIRE (c'est ce qu'attend /recycle).
+        each `pullIds[i]` is the hex id of a COPY (that is what /recycle expects).
 
-        Le parsing reste tolérant : on autodétecte les noms de champs et on accepte
-        un id d'exemplaire unique au lieu d'une liste (config = override explicite).
+        Parsing stays tolerant: we auto-detect field names and accept a single copy id
+        instead of a list (config = explicit override).
         """
         ep = recycle_cfg.get("duplicates_endpoint", "/api/cards/duplicates")
         if not ep:
@@ -374,7 +374,7 @@ class WikiTCGClient:
                 continue
             card_id = _pick(it, recycle_cfg.get("type_field", ""),
                             ["cardId", "card_id", "cardTypeId", "type", "card_type"])
-            # exemplaires : liste `pullIds` (réel) ou variantes ; sinon id unique toléré.
+            # copies: `pullIds` list (real) or variants; otherwise a single id is tolerated.
             pull_ids = (it.get("pullIds") or it.get("pull_ids")
                         or it.get("instanceIds") or it.get("instance_ids"))
             if not pull_ids:

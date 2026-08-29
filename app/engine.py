@@ -1,14 +1,14 @@
-"""Moteur d'automatisation (MVP) : synchronisation + ouverture auto + recyclage.
+"""Automation engine (MVP): sync + auto-opening + recycling.
 
-Boucle, en mode « tout automatique » :
-  1. lire le statut (encre, packs gratuits, niveau) ;
-  2. choisir la série incomplète où il manque le plus de cartes ;
-  3. ouvrir un booster, enregistrer les tirages, mettre à jour l'inventaire ;
-  4. recycler le surplus de doublons (selon la politique, si l'endpoint est configuré) ;
-  5. quand les packs gratuits sont épuisés : acheter un restock avec l'encre
-     (recyclage des doublons d'abord si besoin) ; sinon attendre la régénération.
+Loop, in "fully automatic" mode:
+  1. read the status (ink, free packs, level);
+  2. pick the incomplete series missing the most cards;
+  3. open a booster, record the pulls, update the inventory;
+  4. recycle the surplus of duplicates (per policy, if the endpoint is configured);
+  5. when free packs are exhausted: buy a restock with ink
+     (recycling duplicates first if needed); otherwise wait for regeneration.
 
-Les échanges marketplace restent opt-in (phase 2, désactivés par défaut).
+Marketplace trades remain opt-in (phase 2, disabled by default).
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from . import strategy
 
 log = logging.getLogger("wikitcg.engine")
 
-# Niveau d'événement (_emit) -> méthode du logger ; défaut INFO.
+# Event level (_emit) -> logger method; defaults to INFO.
 _LOG_FN = {"warn": log.warning, "error": log.error}
 
 
@@ -46,38 +46,38 @@ class Engine(ActionsMixin, MarketMixin):
         self._task: asyncio.Task | None = None
         self._recycle_warned = False
         self._opens_since_resync = 0
-        self.opened_total = 0         # nb de packs ouverts depuis le démarrage (suivi multi-comptes)
-        self.recycled_total = 0       # nb d'exemplaires recyclés depuis le démarrage (suivi multi-comptes)
+        self.opened_total = 0         # packs opened since startup (multi-account tracking)
+        self.recycled_total = 0       # copies recycled since startup (multi-account tracking)
         self._last_target = None
-        self.auth_error: str | None = None   # dernier échec d'authentification (UI)
-        # Cache de mes annonces actives (id + carte voulue) — sert à annuler vite une
-        # annonce dès que je tire/obtiens la carte qu'elle visait. Tenu par marketplace_pass.
+        self.auth_error: str | None = None   # last authentication failure (UI)
+        # Cache of my active listings (id + wanted card) — used to quickly cancel a
+        # listing as soon as I pull/obtain the card it targeted. Maintained by marketplace_pass.
         self._my_listings: list[dict] = []
-        # Exemplaires (pullIds) ayant renvoyé 500 au recyclage (ex. carte engagée dans un
-        # deck) -> epoch jusqu'auquel on ne les retente PAS. On les re-essaie après X minutes
-        # (recycle_retry_minutes) : une carte peut redevenir recyclable (sortie d'un deck…).
-        # PERSISTÉ en base (table recycle_failures) -> survit aux redémarrages.
+        # Copies (pullIds) that returned 500 on recycling (e.g. card committed to a
+        # deck) -> epoch until which we do NOT retry them. We re-try after X minutes
+        # (recycle_retry_minutes): a card may become recyclable again (removed from a deck...).
+        # PERSISTED in the DB (recycle_failures table) -> survives restarts.
         self._recycle_skip: dict[str, float] = self.db.recycle_skips()
-        # pullIds déjà traités cette session (recyclés AVEC succès, ou 400 « déjà recyclé / dernière
-        # copie ») : on ne les re-soumet JAMAIS, car /api/cards/duplicates est en retard et continue
-        # de les lister un moment -> sinon on retente et on récolte des 400 cards_not_found.
+        # pullIds already handled this session (recycled SUCCESSFULLY, or 400 "already recycled / last
+        # copy"): we NEVER re-submit them, because /api/cards/duplicates lags behind and keeps
+        # listing them for a while -> otherwise we'd retry and collect 400 cards_not_found.
         self._recycle_done: set[str] = set()
-        # Pack mystery (premium, ~1×/6h) : epoch du prochain essai autorisé (persisté).
+        # Mystery pack (premium, ~1x/6h): epoch of the next allowed attempt (persisted).
         self._mystery_due_at = float(self.db.get_kv("mystery_due_at", "0") or 0)
-        # Quota JOURNALIER de recyclage atteint (le serveur renvoie 429 sur /api/cards/recycle ~200/j) :
-        # epoch jusqu'auquel on suspend tout recyclage (persisté). L'ouverture, elle, continue.
+        # DAILY recycling quota reached (the server returns 429 on /api/cards/recycle ~200/day):
+        # epoch until which we suspend all recycling (persisted). Opening continues regardless.
         self._recycle_quota_until = float(self.db.get_kv("recycle_quota_until", "0") or 0)
-        # Backoffs croissants (s) : attente quand rien à faire (ouverture / marketplace).
+        # Growing backoffs (s): wait when there is nothing to do (opening / marketplace).
         self._idle_backoff = 0.0
         self._mkt_backoff = 0.0
-        self._last_mkt_pass = 0.0    # epoch de la dernière passe marketplace réellement exécutée
-        self._last_full_sync = 0.0   # epoch du dernier full_sync (pour le re-sync périodique)
-        # Réveil de la boucle d'ouverture : posé par le recyclage quand il vient de gagner de
-        # l'encre alors que les packs sont vides → l'ouverture re-tente l'achat sans attendre.
+        self._last_mkt_pass = 0.0    # epoch of the last marketplace pass actually run
+        self._last_full_sync = 0.0   # epoch of the last full_sync (for the periodic re-sync)
+        # Wake-up for the opening loop: set by recycling when it has just gained ink
+        # while packs are empty -> opening retries the purchase without waiting.
         self._wake = asyncio.Event()
 
     # ------------------------------------------------------------------ #
-    #  Émission d'événements (persistés + poussés à l'UI)
+    #  Event emission (persisted + pushed to the UI)
     # ------------------------------------------------------------------ #
     def _emit(self, type_: str, message: str, *, series_id: str = "",
               level: str = "info", detail: dict | None = None, ink_delta: int = 0) -> None:
@@ -98,12 +98,12 @@ class Engine(ActionsMixin, MarketMixin):
         self.bus.publish({"kind": "progress", "series": self.db.progress_view()})
 
     # ------------------------------------------------------------------ #
-    #  Synchronisation
+    #  Synchronization
     # ------------------------------------------------------------------ #
     async def sync_status(self) -> dict:
         prev_total = self.resources.get("total_available")
         st = await self.client.get_status()
-        self.auth_error = None   # un statut OK prouve que la session est valide
+        self.auth_error = None   # an OK status proves the session is valid
         self.resources = {
             "ink": st.get("ink", 0),
             "free_packs": st.get("freePacks", 0),
@@ -120,25 +120,25 @@ class Engine(ActionsMixin, MarketMixin):
         self.db.snapshot_resources(self.resources["ink"], self.resources["free_packs"],
                                    self.resources["paid_packs"], self.resources["level"],
                                    self.resources["xp"])
-        log.debug("Statut : encre=%d packs=%d/%d niveau=%d xp=%d streak=%d",
+        log.debug("Status: ink=%d packs=%d/%d level=%d xp=%d streak=%d",
                   self.resources["ink"], self.resources["total_available"],
                   self.resources["max_free_packs"], self.resources["level"],
                   self.resources["xp"], self.resources["streak"])
-        # Suivi : signaler une régénération (le compte de packs a augmenté depuis la dernière lecture).
+        # Tracking: report a regeneration (the pack count went up since the last read).
         new_total = self.resources["total_available"]
         if prev_total is not None and new_total > prev_total:
-            self._emit("regen", f"Régénération : +{new_total - prev_total} pack(s) "
-                       f"→ {new_total} disponible(s).")
+            self._emit("regen", f"Regeneration: +{new_total - prev_total} pack(s) "
+                       f"→ {new_total} available.")
         self._push_resources()
         return st
 
     async def full_sync(self) -> None:
         self._set_status("syncing")
-        self._emit("sync", "Synchronisation en cours…")
+        self._emit("sync", "Sync in progress…")
         await self.sync_status()
         collection = await self.client.get_collection()
 
-        # 1) Affichage IMMÉDIAT : indices owned/total depuis /api/collection.
+        # 1) IMMEDIATE display: owned/total hints from /api/collection.
         for entry in collection:
             sid = entry["series_id"]
             seed = SERIES_SEED.get(sid, {})
@@ -147,7 +147,7 @@ class Engine(ActionsMixin, MarketMixin):
             self.db.set_collection_hint(sid, entry.get("owned"), entry.get("total_pulls"))
         self._push_progress()
 
-        # 2) Détail par série (inventaire exact) — affine au fil de l'eau (lectures rapides).
+        # 2) Per-series detail (exact inventory) — refines progressively (fast reads).
         for entry in collection:
             sid = entry["series_id"]
             try:
@@ -158,9 +158,9 @@ class Engine(ActionsMixin, MarketMixin):
                 self.db.replace_inventory(sid, items)
                 self._push_progress()
             except ApiError as exc:
-                self._emit("sync", f"Détail {sid} ignoré : {exc}", series_id=sid, level="warn")
+                self._emit("sync", f"Detail {sid} skipped: {exc}", series_id=sid, level="warn")
 
-        # 3) Catalogue (cartes manquantes / marketplace) — chargé après, optionnel.
+        # 3) Catalog (missing cards / marketplace) — loaded afterwards, optional.
         if self.settings.engine.get("fetch_catalog", True):
             for entry in collection:
                 sid = entry["series_id"]
@@ -173,36 +173,36 @@ class Engine(ActionsMixin, MarketMixin):
                             self.db.upsert_series(sid, _prettify(sid), DEFAULT_PRIMARY,
                                                   DEFAULT_ACCENT, len(cards))
                     except ApiError as exc:
-                        self._emit("sync", f"Catalogue {sid} indisponible : {exc}",
+                        self._emit("sync", f"Catalog {sid} unavailable: {exc}",
                                    series_id=sid, level="warn")
 
         self._push_progress()
         self._last_full_sync = time.time()
-        self._emit("sync", "Synchronisation terminée.")
+        self._emit("sync", "Sync complete.")
         self._set_status("running" if self.running else "idle")
 
     # Actions (open_one, _cancel_obsolete_listings, _try_open_mystery, recycle_pass)
-    #   → engine_actions.ActionsMixin
+    #   -> engine_actions.ActionsMixin
     # Marketplace (marketplace_pass, _fulfill_useful)
-    #   → engine_market.MarketMixin
+    #   -> engine_market.MarketMixin
 
     # ------------------------------------------------------------------ #
-    #  Achat de packs avec l'encre (restock)
+    #  Buying packs with ink (restock)
     # ------------------------------------------------------------------ #
     async def _try_buy_packs(self) -> bool:
-        """Achète un restock complet si l'encre le permet (en gardant une réserve).
-        L'encre ne sert QU'À ça. Renvoie True si un achat a eu lieu."""
+        """Buy a full restock if ink allows (keeping a reserve). Ink is used ONLY for this.
+        Returns True if a purchase happened."""
         cost = int(self.settings.packs.get("full_restock_ink", 400))
         reserve = int(self.settings.engine.get("min_ink_reserve", 0))
         ink = self.resources.get("ink", 0)
         if ink < cost + reserve:
-            log.debug("Achat de packs ignoré : encre %d < coût %d + réserve %d", ink, cost, reserve)
+            log.debug("Pack purchase skipped: ink %d < cost %d + reserve %d", ink, cost, reserve)
             return False
-        log.info("Achat d'un restock : encre %d ≥ coût %d (+ réserve %d)", ink, cost, reserve)
+        log.info("Buying a restock: ink %d >= cost %d (+ reserve %d)", ink, cost, reserve)
         try:
             res = await self.client.regen_packs("full")
         except ApiError as exc:
-            self._emit("buy", f"Achat de packs refusé : {exc}", level="warn")
+            self._emit("buy", f"Pack purchase rejected: {exc}", level="warn")
             return False
         if not (res.get("success") or res.get("freePacks") is not None):
             return False
@@ -210,29 +210,29 @@ class Engine(ActionsMixin, MarketMixin):
         self.resources["total_available"] = res.get("totalAvailable", self.resources["free_packs"])
         if res.get("newBalance") is not None:
             self.resources["ink"] = res["newBalance"]
-        self._emit("buy", f"Restock acheté ({cost} encre) → {self.resources['total_available']} packs",
+        self._emit("buy", f"Restock bought ({cost} ink) → {self.resources['total_available']} packs",
                    ink_delta=-cost, detail={"new_balance": self.resources.get("ink")})
         self._push_resources()
         return True
 
     # ------------------------------------------------------------------ #
-    #  Boucle principale — 3 tâches PARALLÈLES (ouverture / recyclage / marketplace)
+    #  Main loop — 3 PARALLEL tasks (opening / recycling / marketplace)
     #
-    #  Les trois tournent en concurrence et partagent le client : le throttle global
-    #  SÉRIALISE déjà toutes les requêtes HTTP (anti‑429), donc la parallélisation
-    #  n'augmente pas le débit réseau — elle DÉCOUPLE les cadences : la marketplace et le
-    #  recyclage restent réactifs même quand l'ouverture attend la régénération, et une
-    #  carte tirée annule aussitôt l'annonce correspondante. Arrêt coopératif via
-    #  self.running ; une AuthError stoppe tout (réessayer ne sert à rien).
+    #  All three run concurrently and share the client: the global throttle already
+    #  SERIALIZES every HTTP request (anti-429), so parallelism does not increase network
+    #  throughput — it DECOUPLES the cadences: the marketplace and recycling stay responsive
+    #  even while opening waits for regeneration, and a pulled card immediately cancels the
+    #  corresponding listing. Cooperative stop via self.running; an AuthError stops everything
+    #  (retrying is pointless).
     # ------------------------------------------------------------------ #
     def _wake_opener(self) -> None:
-        """Réveille la boucle d'ouverture si elle dort (ex. après un gain d'encre)."""
+        """Wake the opening loop if it is sleeping (e.g. after an ink gain)."""
         self._wake.set()
 
     def _on_fatal_auth(self, exc: AuthError) -> None:
         self.auth_error = str(exc)
         self.running = False
-        self._emit("error", f"Authentification : {exc} — colle un nouveau cookie de session.",
+        self._emit("error", f"Authentication: {exc} — paste a new session cookie.",
                    level="error")
         self._set_status("error")
 
@@ -240,16 +240,16 @@ class Engine(ActionsMixin, MarketMixin):
         try:
             await self.full_sync()
             self._set_status("running")
-            # gather : si on annule la tâche superviseur (stop), les sous-tâches le sont aussi.
+            # gather: if we cancel the supervisor task (stop), the sub-tasks are cancelled too.
             await asyncio.gather(self._open_loop(), self._recycle_loop(),
                                  self._marketplace_loop(), self._status_loop())
         except AuthError as exc:
             self._on_fatal_auth(exc)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # filet : on ne laisse jamais le superviseur crasher l'app
-            log.exception("Erreur inattendue dans le superviseur")
-            self._emit("error", f"Erreur inattendue : {exc}", level="error")
+        except Exception as exc:  # safety net: never let the supervisor crash the app
+            log.exception("Unexpected error in the supervisor")
+            self._emit("error", f"Unexpected error: {exc}", level="error")
             self._set_status("error")
         finally:
             self.running = False
@@ -265,29 +265,29 @@ class Engine(ActionsMixin, MarketMixin):
         return f"{m}min" if r == 0 else f"{m}min{r:02d}s"
 
     def _idle_wait_seconds(self) -> float:
-        """Combien attendre quand il n'y a plus rien à faire côté ouverture/achat.
-        On vise le PROCHAIN pack gratuit connu (nextRegenAt) ; sinon backoff croissant plafonné."""
+        """How long to wait when there is nothing left to do on the opening/buying side.
+        We aim for the NEXT known free pack (nextRegenAt); otherwise a capped growing backoff."""
         base = float(self.settings.engine.get("idle_poll_seconds", 60.0))
         cap = float(self.settings.engine.get("idle_poll_max", 1800.0))
         regen_ms = self.resources.get("next_regen_at")
         if regen_ms:
-            until = regen_ms / 1000.0 - time.time() + 3.0   # juste après la régén
+            until = regen_ms / 1000.0 - time.time() + 3.0   # just after the regen
             if until > base:
                 return min(until, cap)
-        # pas d'info de régén exploitable -> on augmente progressivement
+        # no usable regen info -> ramp up progressively
         self._idle_backoff = min(self._idle_backoff * 2, cap) if self._idle_backoff else base
         return self._idle_backoff
 
     async def _open_loop(self) -> None:
-        """Ouvre les packs présents selon la stratégie ; quand il n'y en a plus, achète à
-        l'encre (en finançant par recyclage si besoin) ou attend la régénération."""
+        """Open the available packs per the strategy; when there are none left, buy with ink
+        (funding via recycling if needed) or wait for regeneration."""
         while self.running:
             try:
                 if self.resources.get("total_available", 0) <= 0:
                     await self.sync_status()
                 available = self.resources.get("total_available", 0)
                 if available > 0:
-                    self._idle_backoff = 0.0   # progrès possible → on repart en cadence normale
+                    self._idle_backoff = 0.0   # progress possible -> back to normal cadence
 
                 if available <= 0:
                     if self.settings.engine.get("buy_packs_with_ink"):
@@ -300,73 +300,73 @@ class Engine(ActionsMixin, MarketMixin):
                                     and await self._try_buy_packs():
                                 continue
                     if self.settings.engine.get("on_empty") == "stop":
-                        self._emit("idle", "Plus de packs — arrêt (on_empty=stop).")
+                        self._emit("idle", "No more packs — stopping (on_empty=stop).")
                         self.running = False
                         break
-                    # Rien à faire ici (ni encre ni recyclage finançable) : on attend.
-                    # On se cale sur le PROCHAIN pack gratuit connu (nextRegenAt) ; sinon
-                    # backoff croissant plafonné (évite de recharger toutes les minutes).
-                    # MAIS l'attente est INTERRUPTIBLE : si le recyclage gagne assez d'encre,
-                    # il pose `_wake` et on se réveille aussitôt pour acheter (vraie coordination).
+                    # Nothing to do here (no ink and no affordable recycling): wait.
+                    # We align on the NEXT known free pack (nextRegenAt); otherwise a capped
+                    # growing backoff (avoids reloading every minute).
+                    # BUT the wait is INTERRUPTIBLE: if recycling earns enough ink, it sets
+                    # `_wake` and we wake up immediately to buy (real coordination).
                     wait = self._idle_wait_seconds()
                     self._set_status("waiting")
-                    self._emit("idle", f"Plus de packs — attente {self._fmt_dur(wait)} "
-                               "(régén/marketplace en parallèle ; réveil si encre suffisante).")
+                    self._emit("idle", f"No more packs — waiting {self._fmt_dur(wait)} "
+                               "(regen/marketplace in parallel; wake up if enough ink).")
                     self._wake.clear()
                     try:
                         await asyncio.wait_for(self._wake.wait(), timeout=wait)
-                        self._idle_backoff = 0.0   # réveillé par un gain d'encre → on retente vite
+                        self._idle_backoff = 0.0   # woken by an ink gain -> retry quickly
                     except asyncio.TimeoutError:
                         pass
                     if self.running:
                         self._set_status("running")
                     continue
 
-                # Pack mystery (premium, ~1×/6h) : prioritaire dès qu'il est dû et qu'un pack
-                # est disponible — on lui consacre un pack avant les séries normales.
+                # Mystery pack (premium, ~1x/6h): priority as soon as it's due and a pack is
+                # available — we dedicate one pack to it before the normal series.
                 if (self.settings.engine.get("mystery_pack", True)
                         and time.time() >= self._mystery_due_at):
                     await self._try_open_mystery()
-                    continue   # le compte de packs a changé → on reboucle
+                    continue   # the pack count changed -> loop again
 
                 progress = self.db.progress_view()
                 only = self.settings.engine.get("only_series")
                 if only:
-                    # Mode mono-série (orchestrateur multi-comptes) : on ouvre TOUJOURS cette
-                    # série, même complète (les doublons deviennent matière d'échange pour les LR).
+                    # Single-series mode (multi-account orchestrator): ALWAYS open this series,
+                    # even when complete (duplicates become trade material for the LR).
                     target = next((p for p in progress if p["series_id"] == only), None) or {
                         "series_id": only, "name": _prettify(only),
                         "missing": 0, "total": 0, "pct": 0.0}
                 else:
                     target = strategy.select_target_series(progress)
                     if target is None:
-                        self._emit("done", "Toutes les séries connues sont complètes 🎉")
+                        self._emit("done", "All known series are complete 🎉")
                         self.running = False
                         break
                 if target["series_id"] != self._last_target:
                     self._last_target = target["series_id"]
-                    log.info("Cible : %s — %d manquante(s)/%d (%.1f%%) [série la plus rentable]",
+                    log.info("Target: %s — %d missing/%d (%.1f%%) [most profitable series]",
                              target["name"], target["missing"], target["total"], target["pct"])
 
-                # Priorité absolue : ouvrir les packs présents. La marketplace n'est qu'un
-                # OUTIL COMPLÉMENTAIRE (tâche parallèle) — elle n'interrompt jamais l'ouverture.
+                # Top priority: open the available packs. The marketplace is only a
+                # COMPLEMENTARY TOOL (parallel task) — it never interrupts opening.
                 if self.settings.engine.get("auto_open", True):
                     try:
                         await self.open_one(target["series_id"])
                     except ApiError as exc:
-                        self._emit("open", f"Ouverture refusée ({exc}) — resynchronisation.",
+                        self._emit("open", f"Open rejected ({exc}) — resyncing.",
                                    series_id=target["series_id"], level="warn")
                         self.resources["total_available"] = 0
                         await self.sync_status()
                         continue
 
-                # resync périodique du statut (encre / packs réels)
+                # periodic status resync (real ink / packs)
                 self._opens_since_resync += 1
                 if self._opens_since_resync >= self.settings.engine.get("resync_every", 5):
                     self._opens_since_resync = 0
                     await self.sync_status()
-                    # re-sync COMPLET périodique (opt-in) : recale l'inventaire/les séries si
-                    # tu joues aussi dans le navigateur. 0 = désactivé.
+                    # periodic FULL re-sync (opt-in): realign inventory/series if you also
+                    # play in the browser. 0 = disabled.
                     fr = float(self.settings.engine.get("full_resync_minutes", 0)) * 60
                     if fr and (time.time() - self._last_full_sync) >= fr:
                         await self.full_sync()
@@ -376,16 +376,16 @@ class Engine(ActionsMixin, MarketMixin):
             except asyncio.CancelledError:
                 raise
             except ApiError as exc:
-                self._emit("open", f"Erreur (ouverture) : {exc}", level="warn")
+                self._emit("open", f"Error (opening): {exc}", level="warn")
                 await asyncio.sleep(3.0)
             except Exception as exc:
-                log.exception("Erreur dans _open_loop")
-                self._emit("error", f"Erreur inattendue (ouverture) : {exc}", level="error")
+                log.exception("Error in _open_loop")
+                self._emit("error", f"Unexpected error (opening): {exc}", level="error")
                 await asyncio.sleep(3.0)
 
     async def _recycle_loop(self) -> None:
-        """Recyclage périodique du surplus (mode "surplus"). En "on_demand", ne fait rien :
-        le recyclage n'a alors lieu que pour financer un restock (dans _open_loop)."""
+        """Periodic recycling of the surplus ("surplus" mode). In "on_demand", does nothing:
+        recycling then only happens to fund a restock (in _open_loop)."""
         interval = float(self.settings.engine.get("recycle_interval", 30.0))
         while self.running:
             await asyncio.sleep(interval)
@@ -394,13 +394,13 @@ class Engine(ActionsMixin, MarketMixin):
             if not (self.settings.engine.get("auto_recycle", True)
                     and self.settings.engine.get("recycle_mode", "surplus") != "on_demand"):
                 continue
-            # PRIORITÉ À L'OUVERTURE : s'il reste des packs à ouvrir, on diffère le recyclage
-            # (sinon ses requêtes une-par-une monopolisent le throttle et retardent l'ouverture).
-            # Le recyclage tourne donc surtout quand les packs sont épuisés (et finance les achats).
+            # OPENING HAS PRIORITY: while packs remain to open, defer recycling (otherwise its
+            # one-by-one requests monopolize the throttle and delay opening). Recycling thus
+            # runs mostly when packs are exhausted (and funds purchases).
             if self.resources.get("total_available", 0) > 0:
                 continue
             try:
-                log.debug("Tick recyclage (toutes les %.0fs)", interval)
+                log.debug("Recycle tick (every %.0fs)", interval)
                 await self.recycle_pass()
             except AuthError as exc:
                 self._on_fatal_auth(exc)
@@ -408,21 +408,21 @@ class Engine(ActionsMixin, MarketMixin):
             except asyncio.CancelledError:
                 raise
             except ApiError as exc:
-                self._emit("recycle", f"Erreur (recyclage) : {exc}", level="warn")
+                self._emit("recycle", f"Error (recycling): {exc}", level="warn")
             except Exception:
-                log.exception("Erreur dans _recycle_loop")
+                log.exception("Error in _recycle_loop")
 
     async def _marketplace_loop(self) -> None:
-        """Maintien périodique des annonces (création/réponse/annulation des obsolètes).
-        Ne fait rien tant que [marketplace] enabled est faux (réglable en direct).
+        """Periodic upkeep of the listings (create/fulfill/cancel obsolete ones).
+        Does nothing while [marketplace] enabled is false (adjustable live).
 
-        Backoff croissant plafonné quand une passe ne fait RIEN (rien à créer ni à honorer) :
-        on ne re-sonde pas le marché des autres toutes les N s pour rien. Cadence rapide
-        rétablie dès qu'une action a lieu."""
+        Capped growing backoff when a pass does NOTHING (nothing to create or fulfill):
+        we don't re-probe other players' market every N s for nothing. Fast cadence is
+        restored as soon as an action happens."""
         base = float(self.settings.engine.get("marketplace_interval", 45.0))
         cap = float(self.settings.engine.get("marketplace_interval_max", 900.0))
 
-        def grow() -> float:   # espace la prochaine passe (backoff croissant plafonné)
+        def grow() -> float:   # space out the next pass (capped growing backoff)
             return min((self._mkt_backoff or base) * 2, cap)
 
         while self.running:
@@ -432,16 +432,16 @@ class Engine(ActionsMixin, MarketMixin):
             if not self.settings.marketplace.get("enabled"):
                 self._mkt_backoff = 0.0
                 continue
-            # Priorité à l'ouverture MAIS cadence marketplace GARANTIE : tant qu'il reste des packs
-            # à ouvrir, on diffère la marketplace — sauf si la dernière passe remonte à plus de
-            # `marketplace_min_interval` (sinon, avec l'encre quasi infinie, l'ouverture ne s'arrête
-            # jamais et la marketplace n'est jamais servie). On lui garantit donc ≥ 1 passe / N s.
+            # Opening has priority BUT a GUARANTEED marketplace cadence: while packs remain to
+            # open, defer the marketplace — unless the last pass was more than
+            # `marketplace_min_interval` ago (otherwise, with near-infinite ink, opening never
+            # stops and the marketplace is never served). So we guarantee it >= 1 pass / N s.
             min_interval = float(self.settings.engine.get("marketplace_min_interval", 120.0))
             if (self.resources.get("total_available", 0) > 0
                     and (time.time() - self._last_mkt_pass) < min_interval):
                 continue
             try:
-                log.debug("Tick marketplace (backoff=%.0fs)", self._mkt_backoff or base)
+                log.debug("Marketplace tick (backoff=%.0fs)", self._mkt_backoff or base)
                 self._last_mkt_pass = time.time()
                 acted = await self.marketplace_pass()
             except AuthError as exc:
@@ -450,19 +450,19 @@ class Engine(ActionsMixin, MarketMixin):
             except asyncio.CancelledError:
                 raise
             except ApiError as exc:
-                self._emit("listing", f"Erreur (marketplace) : {exc}", level="warn")
+                self._emit("listing", f"Error (marketplace): {exc}", level="warn")
                 self._mkt_backoff = grow()
                 continue
             except Exception:
-                log.exception("Erreur dans _marketplace_loop")
+                log.exception("Error in _marketplace_loop")
                 continue
-            # action -> cadence rapide ; rien -> on espace (jusqu'au plafond)
+            # action -> fast cadence; nothing -> space out (up to the cap)
             self._mkt_backoff = 0.0 if acted else grow()
 
     async def _status_loop(self) -> None:
-        """Re-sync LÉGER et fréquent du statut (encre / packs réels / régén) — pour toujours
-        connaître les vrais chiffres et détecter une régénération sans dépendre des autres
-        boucles. GET peu coûteux ; cadence `status_sync_seconds`."""
+        """LIGHT and frequent status re-sync (real ink / packs / regen) — to always know the
+        real numbers and detect a regeneration without depending on the other loops. Cheap GET;
+        cadence `status_sync_seconds`."""
         interval = float(self.settings.engine.get("status_sync_seconds", 15.0))
         while self.running:
             await asyncio.sleep(interval)
@@ -470,7 +470,7 @@ class Engine(ActionsMixin, MarketMixin):
                 break
             try:
                 await self.sync_status()
-                # Régén détectée pendant l'attente -> on réveille l'ouverture pour ouvrir aussitôt.
+                # Regen detected during the wait -> wake the opener to open right away.
                 if self.resources.get("total_available", 0) > 0:
                     self._wake_opener()
             except AuthError as exc:
@@ -481,10 +481,10 @@ class Engine(ActionsMixin, MarketMixin):
             except ApiError:
                 pass
             except Exception:
-                log.exception("Erreur dans _status_loop")
+                log.exception("Error in _status_loop")
 
     # ------------------------------------------------------------------ #
-    #  Contrôle
+    #  Control
     # ------------------------------------------------------------------ #
     def start(self) -> None:
         if self.running:
@@ -503,7 +503,7 @@ class Engine(ActionsMixin, MarketMixin):
                 pass
             self._task = None
         self._set_status("stopped")
-        self._emit("control", "Arrêt demandé.")
+        self._emit("control", "Stop requested.")
 
     async def sync_now(self) -> None:
         await self.full_sync()
