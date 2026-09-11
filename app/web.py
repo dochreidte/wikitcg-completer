@@ -1,9 +1,8 @@
-"""FastAPI web app: dashboard + engine control + real-time feed."""
+"""FastAPI dashboard: accounts, farm control, settings and real-time feed."""
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,112 +10,121 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from . import strategy
-from .api_client import WikiTCGClient, AuthError
+from . import strategy, vault
+from .api_client import AuthError
 from .auth import token_status
-from .config import load_settings, _deep_merge
+from .config import _deep_merge, load_settings
 from .db import Database
-from .engine import Engine
 from .events import EventBus
+from .farm import Farm
 from .logging_conf import setup_logging
+from .netguard import install, request_allowed
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 
-# Settings editable live from the UI: name -> (section, coercion type).
 EDITABLE: dict[str, tuple[str, type]] = {
     "buy_packs_with_ink": ("engine", bool),
-    "auto_open": ("engine", bool),
     "auto_recycle": ("engine", bool),
-    "on_empty": ("engine", str),          # "wait" | "stop"
-    "recycle_mode": ("engine", str),      # "surplus" | "on_demand"
-    "recycle_reserve_mode": ("engine", str),  # "fixed" (keep_spares) | "missing" (per rarity)
-    "recycle_priority": ("engine", str),  # "common_first" (preserve rares) | "rare_first" (pure farm)
     "mystery_pack": ("engine", bool),
-    "min_ink_reserve": ("engine", int),
-    "idle_poll_seconds": ("engine", float),
-    "recycle_quota_cooldown_minutes": ("engine", float),  # recycling pause after 429 (quota ~200/day)
-    "marketplace_min_interval": ("engine", float),  # guaranteed marketplace cadence (s)
-    "autostart": ("engine", bool),
-    # Marketplace (commits real cards / other players) — create/cancel contract verified.
     "enabled": ("marketplace", bool),
+    "recycle_mode": ("engine", str),
+    "recycle_reserve_mode": ("engine", str),
+    "recycle_priority": ("engine", str),
+    "min_ink_reserve": ("engine", int),
+    "autostart": ("engine", bool),
     "fulfill_others": ("marketplace", bool),
     "max_listings": ("marketplace", int),
-    "near_completion_max_missing": ("marketplace", int),  # 0 = all; N = series with <= N missing
-    "dry_run": ("marketplace", bool),
+    "near_completion_max_missing": ("marketplace", int),
 }
+CHOICES = {
+    "recycle_mode": ("surplus", "on_demand"),
+    "recycle_reserve_mode": ("fixed", "missing"),
+    "recycle_priority": ("common_first", "rare_first"),
+}
+MAX_COOKIE = 8192
 
-# Shared objects (initialized at startup via lifespan)
 state: dict = {}
-
-# Anti-spam for the lazy sync of /api/live when the engine is stopped.
 _live_sync: dict = {"at": 0.0, "busy": False}
+_background: set[asyncio.Task] = set()
 
 
-def _coerce(typ: type, value):
+def _coerce(name: str, value):
+    typ = EDITABLE[name][1]
     if typ is bool:
         return value in (True, "true", "1", 1, "on", "yes")
-    return typ(value)
+    out = typ(value)
+    if name in CHOICES and out not in CHOICES[name]:
+        raise ValueError(name)
+    if typ is int and out < 0:
+        raise ValueError(name)
+    return out
 
 
 def _editable_view(settings) -> dict:
     return {name: settings.raw[section].get(name) for name, (section, _) in EDITABLE.items()}
 
 
-def _overridden_keys(db) -> list:
-    """Names of settings currently forced by the UI (present in settings_overrides)."""
+def _overridden_keys(db: Database) -> list:
     ov = db.get_json("settings_overrides", {}) or {}
+    if not isinstance(ov, dict):
+        return []
     return [k for sec in ov.values() if isinstance(sec, dict) for k in sec]
+
+
+def _apply_overrides(settings, db: Database) -> None:
+    over = db.get_json("settings_overrides")
+    if not isinstance(over, dict):
+        return
+    clean = {sec: {k: v for k, v in vals.items() if EDITABLE.get(k, ("",))[0] == sec}
+             for sec, vals in over.items() if isinstance(vals, dict)}
+    settings.raw = _deep_merge(settings.raw, clean)
+
+
+def _error(message: str, status: int) -> JSONResponse:
+    return JSONResponse({"ok": False, "error": message}, status_code=status)
+
+
+def _public(acc: dict) -> dict:
+    return {k: acc[k] for k in ("id", "name", "series")}
+
+
+def _farm() -> Farm:
+    return state["farm"]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = load_settings()
-    db = Database(settings.paths["database"])
-    # Log level adjusted from the UI (persisted): applied before logging config.
-    log_over = db.get_json("logging_override")
+    app_db = Database(settings.paths["database"])
+    log_over = app_db.get_json("logging_override")
     if isinstance(log_over, dict):
-        settings.raw["logging"].update(log_over)
-    setup_logging(settings.paths["log_file"], settings.logging.get("level", "INFO"),
-                  log_requests=bool(settings.logging.get("log_requests", False)))
+        settings.raw["logging"].update({k: log_over[k] for k in ("level", "log_requests") if k in log_over})
+    setup_logging(settings.paths["log_file"], settings.logging["level"],
+                  log_requests=bool(settings.logging["log_requests"]))
     log = logging.getLogger("wikitcg")
-    # Settings adjusted live from the UI (persisted in DB): they win over the TOML.
-    over = db.get_json("settings_overrides")
-    if isinstance(over, dict):
-        settings.raw = _deep_merge(settings.raw, over)
-    # Session cookie updated from the UI (persisted): wins over the TOML.
-    cookie_over = db.get_kv("session_cookie_override")
-    if cookie_over:
-        settings.raw["api"]["session_cookie"] = cookie_over
-    extra_over = db.get_kv("extra_cookies_override")
-    if extra_over:
-        settings.raw["api"]["extra_cookies"] = extra_over
+    _apply_overrides(settings, app_db)
     bus = EventBus()
-    client = WikiTCGClient(settings)
-    # Automatically persist any session cookie refreshed by the server.
-    client.session_sink = lambda tok: db.set_kv("session_cookie_override", tok)
-    engine = Engine(client, db, bus, settings)
-    state.update(settings=settings, db=db, bus=bus, client=client, engine=engine, log=log)
-
-    if not settings.has_session:
-        log.warning("wtcg_session cookie missing: set api.session_cookie in config.toml "
-                    "(the UI starts, but API calls will fail with 401).")
-    elif not os.environ.get("WIKITCG_SESSION") and not db.get_kv("session_cookie_override"):
-        log.info("Security: the cookie is read from config.toml (in clear text). You may prefer the "
-                 "WIKITCG_SESSION environment variable and rotate the token regularly.")
+    farm = Farm(app_db, settings, bus)
+    state.update(settings=settings, app_db=app_db, bus=bus, farm=farm)
+    await farm.restore()
+    if not vault.available():
+        log.warning("No secure OS keyring found: set WIKITCG_SESSION_<ACCOUNT_ID> environment variables.")
     log.info("Server ready at http://%s:%s", settings.server["host"], settings.server["port"])
-    if settings.engine.get("autostart") and settings.has_session:
-        log.info("autostart enabled: automatically starting the loop.")
-        engine.start()
+    if settings.engine.get("autostart"):
+        farm.start()
     try:
         yield
     finally:
-        if engine.running:
-            await engine.stop()
-        await client.aclose()
-        db.close()
+        await farm.close()
+        app_db.close()
+
+
+def _bind_host() -> str | None:
+    return state["settings"].server.get("host") if "settings" in state else None
 
 
 app = FastAPI(title="wikitcg-completer", lifespan=lifespan)
+install(app, _bind_host)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -124,76 +132,65 @@ async def index() -> str:
     return FRONTEND.read_text(encoding="utf-8")
 
 
-def _live_payload(engine, db, settings) -> dict:
-    """Fields shared by /api/state and /api/live (status, resources, series, config, session)."""
-    return {
-        "status": engine.status,
-        "running": engine.running,
-        "has_session": settings.has_session,
-        "recycle_enabled": bool(settings.recycle.get("duplicates_endpoint")),
-        "resources": engine.resources,
-        "series": db.progress_view(),
+def _live_payload() -> dict:
+    settings = state["settings"]
+    farm = _farm()
+    s = farm.session
+    payload = {
+        "running": farm.running,
         "config": _editable_view(settings),
-        "config_overridden": _overridden_keys(db),
+        "config_overridden": _overridden_keys(state["app_db"]),
         "logging": dict(settings.logging),
-        "token": token_status(state["client"].session_cookie),
-        "auth_error": engine.auth_error,
+        "recycle_enabled": bool(settings.recycle.get("duplicates_endpoint")),
     }
+    if s is None:
+        return {**payload, "status": "idle", "has_session": False, "resources": {}, "series": [],
+                "token": token_status(""), "auth_error": None, "account": None}
+    return {**payload, "status": s.engine.status, "has_session": s.settings.has_session,
+            "resources": s.engine.resources, "series": s.db.progress_view(),
+            "token": token_status(s.client.session_cookie), "auth_error": s.engine.auth_error,
+            "account": _public(s.account)}
 
 
 @app.get("/api/state")
 async def get_state() -> JSONResponse:
-    engine: Engine = state["engine"]
-    db: Database = state["db"]
-    settings = state["settings"]
-    return JSONResponse({
-        **_live_payload(engine, db, settings),
-        "actions": db.recent_actions(80),
-        "empirical_rates": db.empirical_pull_rates(),
-        "recycle_values": db.empirical_recycle_values(),
-        "full_restock_ink": settings.packs.get("full_restock_ink", 400),
-    })
+    s = _farm().session
+    history = ({"actions": s.db.recent_actions(80), "empirical_rates": s.db.empirical_pull_rates(),
+                "recycle_values": s.db.empirical_recycle_values()} if s
+               else {"actions": [], "empirical_rates": {}, "recycle_values": {}})
+    return JSONResponse({**_live_payload(), **history,
+                         "full_restock_ink": state["settings"].packs.get("full_restock_ink", 400)})
 
 
 @app.get("/api/live")
 async def get_live() -> JSONResponse:
-    """LIGHT subset of /api/state (without the actions list): for frequent periodic
-    refreshes of the dashboard (ink, packs, series, status, session).
-
-    When the engine is STOPPED, lazily refresh the server status (15 s cache) so the
-    info stays accurate even without an active loop."""
-    engine: Engine = state["engine"]
-    db: Database = state["db"]
-    settings = state["settings"]
-    if (not engine.running and engine.status != "syncing"
-            and settings.has_session and not _live_sync["busy"]):
-        if time.monotonic() - _live_sync["at"] >= 15:
-            _live_sync["busy"] = True
-            try:
-                await engine.sync_status()
-            except AuthError as exc:
-                engine.auth_error = str(exc)
-            except Exception:
-                pass
-            finally:
-                _live_sync["at"] = time.monotonic()
-                _live_sync["busy"] = False
-    return JSONResponse(_live_payload(engine, db, settings))
+    farm = _farm()
+    s = farm.session
+    if (s and not farm.running and s.engine.status != "syncing" and s.settings.has_session
+            and not _live_sync["busy"] and time.monotonic() - _live_sync["at"] >= 15):
+        _live_sync["busy"] = True
+        try:
+            await s.engine.sync_status()
+        except AuthError as exc:
+            s.engine.auth_error = str(exc)
+        except Exception:
+            pass
+        finally:
+            _live_sync["at"] = time.monotonic()
+            _live_sync["busy"] = False
+    return JSONResponse(_live_payload())
 
 
 @app.post("/api/logging")
 async def set_logging(payload: dict) -> JSONResponse:
-    """Change the log level LIVE (and request tracing), persisted in the database."""
     settings = state["settings"]
-    db: Database = state["db"]
-    lvl = str((payload or {}).get("level", settings.logging.get("level", "INFO"))).upper()
+    lvl = str(payload.get("level", settings.logging.get("level", "INFO"))).upper()
     if lvl not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         lvl = "INFO"
-    reqs = bool((payload or {}).get("log_requests", settings.logging.get("log_requests", False)))
-    settings.raw["logging"]["level"] = lvl
-    settings.raw["logging"]["log_requests"] = reqs
+    reqs = bool(payload.get("log_requests", settings.logging.get("log_requests", False)))
+    settings.raw["logging"].update(level=lvl, log_requests=reqs)
     setup_logging(settings.paths["log_file"], lvl, log_requests=reqs)
-    db.set_json("logging_override", {"level": lvl, "log_requests": reqs})
+    state["app_db"].set_json("logging_override", {"level": lvl, "log_requests": reqs})
     state["bus"].publish({"kind": "logging", **settings.logging})
     return JSONResponse({"ok": True, "logging": dict(settings.logging)})
 
@@ -205,93 +202,119 @@ async def get_config() -> JSONResponse:
 
 @app.post("/api/config")
 async def set_config(payload: dict) -> JSONResponse:
-    """Update the editable settings LIVE (takes effect on the next iteration)
-    and persist them in the database so they survive a restart."""
     settings = state["settings"]
-    db: Database = state["db"]
+    db: Database = state["app_db"]
     applied: dict = {}
-    for name, value in (payload or {}).items():
-        spec = EDITABLE.get(name)
-        if not spec:
+    for name, value in payload.items():
+        if name not in EDITABLE:
             continue
-        section, typ = spec
         try:
-            settings.raw[section][name] = _coerce(typ, value)
-            applied[name] = settings.raw[section][name]
+            applied[name] = _coerce(name, value)
         except (TypeError, ValueError):
             continue
-    # Persist ONLY the keys actually changed (the TOML stays the source for the rest).
+        settings.raw[EDITABLE[name][0]][name] = applied[name]
     existing = db.get_json("settings_overrides", {})
     if not isinstance(existing, dict):
         existing = {}
-    for name in applied:
-        section = EDITABLE[name][0]
-        existing.setdefault(section, {})[name] = settings.raw[section][name]
+    for name, value in applied.items():
+        existing.setdefault(EDITABLE[name][0], {})[name] = value
     db.set_json("settings_overrides", existing)
+    _farm().refresh_settings()
     state["bus"].publish({"kind": "config", **_editable_view(settings)})
     return JSONResponse({"ok": True, "applied": applied, "config": _editable_view(settings)})
 
 
 @app.post("/api/config/reset")
 async def reset_config() -> JSONResponse:
-    """Forget the settings changed via the UI and revert to the config.toml values."""
     settings = state["settings"]
-    db: Database = state["db"]
-    fresh = load_settings()  # TOML + env vars, without the UI overrides
+    fresh = load_settings()
     for name, (section, _) in EDITABLE.items():
         settings.raw[section][name] = fresh.raw[section].get(name)
-    db.set_kv("settings_overrides", "")
+    state["app_db"].set_kv("settings_overrides", "")
+    _farm().refresh_settings()
     state["bus"].publish({"kind": "config", **_editable_view(settings)})
     return JSONResponse({"ok": True, "config": _editable_view(settings)})
 
 
-@app.post("/api/auth/cookie")
-async def set_cookie(payload: dict) -> JSONResponse:
-    """Manual session "refresh": paste a fresh wtcg_session cookie (from the browser).
-    Immediate effect (no restart) + persistence. This is the renewal mechanism,
-    because wikitcg exposes no server-side refresh endpoint."""
-    settings = state["settings"]
-    client: WikiTCGClient = state["client"]
-    engine: Engine = state["engine"]
-    db: Database = state["db"]
-    session = (payload or {}).get("session_cookie", "").strip()
-    extra = (payload or {}).get("extra_cookies", "").strip()
-    if not session or session.count(".") < 2:
-        return JSONResponse({"ok": False, "error": "Invalid wtcg_session cookie (a JWT is expected)."},
-                            status_code=400)
-    client.update_session(session, extra)
-    settings.raw["api"]["session_cookie"] = session
-    db.set_kv("session_cookie_override", session)
-    if extra:
-        settings.raw["api"]["extra_cookies"] = extra
-        db.set_kv("extra_cookies_override", extra)
-    engine.auth_error = None
-    ts = token_status(session)
-    state["bus"].publish({"kind": "token", **ts})
-    return JSONResponse({"ok": True, "token": ts})
+@app.get("/api/accounts")
+async def list_accounts() -> JSONResponse:
+    return JSONResponse(_farm().snapshot())
+
+
+@app.post("/api/accounts")
+async def add_account(payload: dict) -> JSONResponse:
+    try:
+        acc = await _farm().add(str(payload.get("name") or ""), str(payload.get("series") or ""))
+    except ValueError as exc:
+        return _error(str(exc), 400)
+    return JSONResponse({"ok": True, "account": _public(acc)})
+
+
+@app.post("/api/accounts/{account_id}")
+async def update_account(account_id: str, payload: dict) -> JSONResponse:
+    fields = {k: None if payload.get(k) is None else str(payload[k]) for k in ("name", "series")}
+    try:
+        acc = await _farm().update(account_id, **fields)
+    except ValueError as exc:
+        return _error(str(exc), 400)
+    if acc is None:
+        return _error("Unknown account.", 404)
+    return JSONResponse({"ok": True, "account": _public(acc)})
+
+
+@app.delete("/api/accounts/{account_id}")
+async def delete_account(account_id: str) -> JSONResponse:
+    try:
+        removed = await _farm().remove(account_id)
+    except ValueError as exc:
+        return _error(str(exc), 400)
+    return JSONResponse({"ok": True}) if removed else _error("Unknown account.", 404)
+
+
+@app.post("/api/accounts/{account_id}/cookie")
+async def set_cookie(account_id: str, payload: dict) -> JSONResponse:
+    session = str(payload.get("session_cookie") or "").strip()
+    extra = str(payload.get("extra_cookies") or "").strip()
+    if len(session) > MAX_COOKIE or len(extra) > MAX_COOKIE:
+        return _error("Cookie too long.", 400)
+    try:
+        status = _farm().set_cookie(account_id, session, extra)
+    except KeyError:
+        return _error("Unknown account.", 404)
+    except ValueError as exc:
+        return _error(str(exc), 400)
+    except vault.VaultError as exc:
+        return _error(str(exc), 503)
+    return JSONResponse({"ok": True, "token": status})
+
+
+@app.post("/api/accounts/{account_id}/activate")
+async def activate_account(account_id: str) -> JSONResponse:
+    try:
+        await _farm().activate(account_id)
+    except KeyError:
+        return _error("Unknown account.", 404)
+    return JSONResponse({"ok": True, "current": account_id})
 
 
 @app.get("/api/marketplace")
 async def marketplace() -> JSONResponse:
-    """READ-ONLY marketplace view (my listings + the active market).
-    Makes the marketplace visible even when automation is disabled."""
-    settings = state["settings"]
-    client: WikiTCGClient = state["client"]
-    cfg = settings.marketplace
+    cfg = state["settings"].marketplace
+    s = _farm().session
+    if s is None:
+        return JSONResponse({"enabled": bool(cfg.get("enabled")), "error": "No account.",
+                             "mine": [], "market": []})
     fields = ("id", "status", "offered_card_type", "offered_series", "offered_rarity",
               "wanted_card_id", "wanted_series_id", "lister_name", "expires_at")
-
-    def norm(l: dict) -> dict:
-        return {k: l.get(k) for k in fields}
-
     try:
-        mine = await client.marketplace_mine()
-        browse = await client.marketplace_browse()
-    except Exception as exc:  # auth/network: return the state without breaking the UI
+        mine = await s.client.marketplace_mine()
+        browse = await s.client.marketplace_browse()
+    except Exception as exc:
         return JSONResponse({"enabled": bool(cfg.get("enabled")), "error": str(exc),
                              "mine": [], "market": []})
-    mine_l = [norm(l) for l in (mine.get("listings") or [])]
-    market = [norm(l) for l in (browse.get("listings") or []) if l.get("status") == "active"]
+    mine_l = [{k: l.get(k) for k in fields} for l in (mine.get("listings") or [])]
+    market = [{k: l.get(k) for k in fields} for l in (browse.get("listings") or [])
+              if l.get("status") == "active"]
     return JSONResponse({
         "enabled": bool(cfg.get("enabled")),
         "max_listings": cfg.get("max_listings", 5),
@@ -303,67 +326,89 @@ async def marketplace() -> JSONResponse:
 
 @app.get("/api/stats")
 async def get_stats() -> JSONResponse:
-    db: Database = state["db"]
+    s = _farm().session
+    if s is None:
+        return JSONResponse({"history": [], "pull_counts": [], "recycle": {},
+                             "recycle_values": {}, "recycle_failures": {}})
     return JSONResponse({
-        "history": db.resource_history(120),
-        "pull_counts": db.pull_counts(),
-        "recycle": db.recycle_summary(),
-        "recycle_values": db.empirical_recycle_values(),
-        "recycle_failures": db.recycle_failures_summary(),
+        "history": s.db.resource_history(120),
+        "pull_counts": s.db.pull_counts(),
+        "recycle": s.db.recycle_summary(),
+        "recycle_values": s.db.empirical_recycle_values(),
+        "recycle_failures": s.db.recycle_failures_summary(),
     })
 
 
 @app.get("/api/series/{sid}")
 async def series_detail(sid: str) -> JSONResponse:
-    db: Database = state["db"]
-    prog = next((p for p in db.progress_view() if p["series_id"] == sid), None)
-    rarity = db.rarity_breakdown(sid)
-    missing = db.missing_cards(sid)
-    # Rarest to most common (descending rank), then by card number; unknowns last.
+    s = _farm().session
+    if s is None:
+        return _error("No account.", 404)
+    missing = s.db.missing_cards(sid)
     missing.sort(key=lambda m: (-strategy.RARITY_RANK.get(m["rarity"], -1), m.get("card_number") or 0))
     return JSONResponse({
-        "series": prog,
-        "rarity": rarity,
+        "series": next((p for p in s.db.progress_view() if p["series_id"] == sid), None),
+        "rarity": s.db.rarity_breakdown(sid),
         "missing": missing,
-        "catalog_loaded": db.catalog_size(sid) > 0,
-        "duplicates": len(db.duplicates(sid)),
+        "catalog_loaded": s.db.catalog_size(sid) > 0,
+        "duplicates": len(s.db.duplicates(sid)),
     })
 
 
 @app.post("/api/control/start")
-async def control_start() -> dict:
-    state["engine"].start()
-    return {"ok": True, "status": state["engine"].status}
+async def control_start() -> JSONResponse:
+    _farm().start()
+    return JSONResponse({"ok": True, "running": _farm().running})
 
 
 @app.post("/api/control/stop")
-async def control_stop() -> dict:
-    await state["engine"].stop()
-    return {"ok": True, "status": state["engine"].status}
+async def control_stop() -> JSONResponse:
+    await _farm().stop()
+    return JSONResponse({"ok": True, "running": _farm().running})
+
+
+@app.post("/api/control/next")
+async def control_next() -> JSONResponse:
+    await _farm().next()
+    return JSONResponse({"ok": True, "current": _farm().current_id()})
 
 
 @app.post("/api/control/sync")
-async def control_sync() -> dict:
-    asyncio.create_task(state["engine"].sync_now())
-    return {"ok": True}
+async def control_sync() -> JSONResponse:
+    s = _farm().session
+    if s is None:
+        return _error("No account.", 409)
+    task = asyncio.create_task(s.engine.sync_now())
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return JSONResponse({"ok": True})
 
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
+    if not request_allowed("WEBSOCKET", websocket.headers, _bind_host()):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     bus: EventBus = state["bus"]
     q = bus.subscribe()
+
+    async def pump() -> None:
+        try:
+            s = _farm().session
+            await websocket.send_json({"kind": "status", "status": s.engine.status if s else "idle",
+                                       "running": _farm().running})
+            while True:
+                await websocket.send_json(await q.get())
+        except Exception:
+            pass
+
+    sender = asyncio.create_task(pump())
     try:
-        # snapshot initial
-        await websocket.send_json({"kind": "status",
-                                   "status": state["engine"].status,
-                                   "running": state["engine"].running})
-        while True:
-            event = await q.get()
-            await websocket.send_json(event)
-    except (WebSocketDisconnect, asyncio.CancelledError):
-        pass  # client disconnect or server shutdown (Ctrl+C): normal
-    except Exception:
+        while (await websocket.receive())["type"] != "websocket.disconnect":
+            pass
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        sender.cancel()
         bus.unsubscribe(q)

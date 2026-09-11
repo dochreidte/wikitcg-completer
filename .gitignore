@@ -1,14 +1,10 @@
-# Secrets: config.toml contains the session cookie (JWT) — DO NOT commit.
-# Only config.example.toml (without secrets) should be committed.
+# Secrets
 config.toml
-# Multi-account: accounts.toml contains the cookies of several accounts — DO NOT commit.
-# Only accounts.example.toml (without secrets) should be committed.
 accounts.toml
-# Environment-based secrets (WIKITCG_SESSION, WIKITCG_EXTRA_COOKIES, ...)
 .env
 .env.*
 
-# Database & logs (may contain session/history data)
+# Runtime data
 *.db
 *.db-journal
 *.db-shm
@@ -29,10 +25,4 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
-
-# Internal / agent-only files — not needed in the published repo.
-# CLAUDE.md: guidance for Claude Code. docs/: internal analysis, logic notes and
-# roadmap (docs/REPORT.md also references unrelated local project folders).
-CLAUDE.md
 .claude/
-docs/

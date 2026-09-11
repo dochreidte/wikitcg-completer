@@ -1,4 +1,4 @@
-"""Tests des helpers purs (parsing API, cookies, JWT)."""
+"""Helper tests."""
 import base64
 import json
 import time

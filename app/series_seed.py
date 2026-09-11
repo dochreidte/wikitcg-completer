@@ -1,8 +1,4 @@
-"""Reference data for the series (official names + set size), provided by the user.
-
-Avoids depending on a network call to show correct names and the right
-completion denominator from the very first render.
-"""
+"""Fallback reference data for series (names, sizes). Used when the live API endpoint is unavailable."""
 
 SERIES_SEED: dict[str, dict] = {
     "ancient-civilizations": {"name": "Lost Empires",        "size": 200},
@@ -13,12 +9,12 @@ SERIES_SEED: dict[str, dict] = {
     "mystery":               {"name": "???",                 "size": 50},
     "myths-legends":         {"name": "Myths & Legends",     "size": 200},
     "natural-world":         {"name": "Untamed Wilds",       "size": 200},
+    "ocean-life":            {"name": "Ocean Life",          "size": 200},
     "primeval":              {"name": "Primeval",            "size": 200},
     "science-discovery":     {"name": "Eureka Archives",     "size": 200},
     "space-cosmos":          {"name": "Celestial Vault",     "size": 200},
     "world-culture":         {"name": "Living Heritage",     "size": 168},
 }
 
-# Fallback palette per series (real colors overwritten on the first open via /api/packs/open).
 DEFAULT_PRIMARY = "#8b6914"
 DEFAULT_ACCENT = "#d4a843"

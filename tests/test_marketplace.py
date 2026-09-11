@@ -7,7 +7,7 @@ from app import marketplace
 class PlanListings(unittest.TestCase):
     def _scenario(self):
         progress = [
-            {"series_id": "A", "missing": 1},   # close to completion
+            {"series_id": "A", "missing": 1},
             {"series_id": "B", "missing": 5},
         ]
         missing_by_series = {
@@ -15,7 +15,7 @@ class PlanListings(unittest.TestCase):
             "B": [{"card_id": "b1", "rarity": "SR"}],
         }
         dups = [
-            {"card_id": "dR", "rarity": "R", "series_id": "C", "quantity": 2},   # 1 available
+            {"card_id": "dR", "rarity": "R", "series_id": "C", "quantity": 2},
             {"card_id": "dSR", "rarity": "SR", "series_id": "C", "quantity": 2},
         ]
         return progress, missing_by_series, dups
@@ -25,8 +25,8 @@ class PlanListings(unittest.TestCase):
         plans = marketplace.plan_listings(missing_by_series, dups, {}, set(), 1, progress, True)
         self.assertEqual(len(plans), 1)
         pl = plans[0]
-        self.assertEqual(pl["wanted_card"], "a1")        # series A (1 missing) first
-        self.assertEqual(pl["offered_type"], "dR")       # rarity R = the lowest eligible
+        self.assertEqual(pl["wanted_card"], "a1")
+        self.assertEqual(pl["offered_type"], "dR")
 
     def test_skips_already_wanted(self):
         progress, missing_by_series, dups = self._scenario()
@@ -45,17 +45,14 @@ class PlanListings(unittest.TestCase):
         self.assertEqual(plans, [])
 
     def test_never_offers_a_single_copy(self):
-        # RULE 1: a card owned as a single copy (quantity=1) must NEVER be offered.
         progress = [{"series_id": "A", "missing": 1}]
         missing_by_series = {"A": [{"card_id": "a1", "rarity": "R"}]}
-        single = [{"card_id": "dR", "rarity": "R", "series_id": "C", "quantity": 1}]   # 1 copy
+        single = [{"card_id": "dR", "rarity": "R", "series_id": "C", "quantity": 1}]
         self.assertEqual(marketplace.plan_listings(missing_by_series, single, {}, set(), 1, progress), [])
-        # with 2 copies, the offer becomes possible (we keep 1).
         dbl = [{"card_id": "dR", "rarity": "R", "series_id": "C", "quantity": 2}]
         self.assertEqual(len(marketplace.plan_listings(missing_by_series, dbl, {}, set(), 1, progress)), 1)
 
     def test_does_not_overcommit_already_listed_copies(self):
-        # 2 copies but 1 already committed to an active listing -> nothing left to offer.
         progress = [{"series_id": "A", "missing": 1}]
         missing_by_series = {"A": [{"card_id": "a1", "rarity": "R"}]}
         dbl = [{"card_id": "dR", "rarity": "R", "series_id": "C", "quantity": 2}]
@@ -82,19 +79,14 @@ class PlanFulfillments(unittest.TestCase):
             {"id": "L1", "offered_card_type": "x1", "wanted_card_id": "y"},
             {"id": "L2", "offered_card_type": "x2", "wanted_card_id": "y"},
         ]
-        # only one spare copy of "y" -> a single deal
         deals = marketplace.plan_fulfillments(listings, {"x1", "x2"}, {"y": 1}, 5)
         self.assertEqual(len(deals), 1)
 
     def test_requires_both_conditions(self):
-        # RULE 2: fulfill ONLY if (a) wanted card held as a duplicate AND (b) offered card not owned.
         listing = [{"id": "L1", "offered_card_type": "GAIN", "wanted_card_id": "GIVE"}]
-        # (a) AND (b) true -> accepted
         self.assertEqual(len(marketplace.plan_fulfillments(listing, {"GAIN"}, {"GIVE": 1}, 5)), 1)
-        # (a) false: I don't have "GIVE" as a duplicate -> rejected
         self.assertEqual(marketplace.plan_fulfillments(listing, {"GAIN"}, {"GIVE": 0}, 5), [])
         self.assertEqual(marketplace.plan_fulfillments(listing, {"GAIN"}, {}, 5), [])
-        # (b) false: I already own "GAIN" (not among my missing) -> rejected
         self.assertEqual(marketplace.plan_fulfillments(listing, set(), {"GIVE": 1}, 5), [])
 
 
