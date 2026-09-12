@@ -1,0 +1,64 @@
+/* The three visual directions. Every colour, font and metric the app uses is a token
+   defined here; app.css never hard-codes one, so a theme swap repaints everything. */
+
+/* ===================== THEME A — ARCHIVE ===================== */
+body.t-archive{
+  --bg:#f7f4ed; --surface:#fffdf8; --sunken:#efeade;
+  --rule:#ddd5c4; --rule2:#c3b8a0;
+  --txt:#1c1a15; --txt2:#5c5546; --txt3:#8a8271;
+  --accent:#2d4f7c; --good:#41663f; --warn:#8f6b1d; --bad:#8f3030;
+  --on-accent:#fffdf8; --on-bad:#fffdf8;
+  --danger-bg:#fdf6f2; --warn-bg:#fbf7ec; --danger-rule:#cfa0a0;
+  --r-LR:#7b3fa8; --r-UR:#b4532a; --r-SSR:#9a7420; --r-SR:#2b6c85;
+  --r-R:#41663f; --r-UC:#6e6045; --r-C:#8a8271;
+  --fdisp:"Newsreader",Georgia,serif; --fbody:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --r:3px; --bw:1px; --grain:.4;
+  --sec-size:17px; --sec-tr:none; --sec-ls:.005em; --sec-w:500;
+  --run-size:19px; --run-tr:none; --run-ls:0; --run-w:500;
+  --stat-font:var(--fmono); --stat-size:27px; --stat-w:400; --stat-ls:-.01em;
+  --wm-size:15px; --wm-ls:.13em;
+  --series-bars:own;
+}
+
+/* ===================== THEME B — CONSOLE ===================== */
+body.t-console{
+  --bg:#0b0d0e; --surface:#121617; --sunken:#080a0b;
+  --rule:#242c2e; --rule2:#364245;
+  --txt:#ccd8da; --txt2:#93a3a5; --txt3:#5d6b6e;
+  --accent:#c2f04a; --good:#8fd14a; --warn:#e8b04a; --bad:#e4674f;
+  --on-accent:#0b0d0e; --on-bad:#0b0d0e;
+  --danger-bg:#1a1011; --warn-bg:#17150d; --danger-rule:#6b3730;
+  --r-LR:#e0a3ff; --r-UR:#ff9d6b; --r-SSR:#ffd166; --r-SR:#6fb3c9;
+  --r-R:#7bbf6a; --r-UC:#b9a884; --r-C:#8d7c5c;
+  --fdisp:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --fbody:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --r:0px; --bw:1px; --grain:0;
+  --sec-size:11px; --sec-tr:uppercase; --sec-ls:.17em; --sec-w:500;
+  --run-size:14px; --run-tr:uppercase; --run-ls:.1em; --run-w:500;
+  --stat-font:var(--fmono); --stat-size:26px; --stat-w:500; --stat-ls:0;
+  --wm-size:12px; --wm-ls:.2em;
+  --series-bars:own;
+}
+
+/* ===================== THEME C — PRESSROOM ===================== */
+body.t-pressroom{
+  --bg:#eeeae1; --surface:#eeeae1; --sunken:#dcd6ca;
+  --rule:#101010; --rule2:#101010;
+  --txt:#101010; --txt2:#3a3730; --txt3:#6f6a61;
+  --accent:#d7301f; --good:#1f6b2f; --warn:#b06a00; --bad:#d7301f;
+  --on-accent:#eeeae1; --on-bad:#eeeae1;
+  --danger-bg:#eeeae1; --warn-bg:#eeeae1; --danger-rule:#d7301f;
+  --r-LR:#6a1fa8; --r-UR:#c2410c; --r-SSR:#a16207; --r-SR:#155e75;
+  --r-R:#15803d; --r-UC:#57534e; --r-C:#78716c;
+  --fdisp:"Anton","Arial Narrow",Impact,sans-serif;
+  --fbody:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --r:0px; --bw:2px; --grain:0;
+  --sec-size:20px; --sec-tr:uppercase; --sec-ls:.01em; --sec-w:400;
+  --run-size:24px; --run-tr:uppercase; --run-ls:-.01em; --run-w:400;
+  --stat-font:var(--fdisp); --stat-size:34px; --stat-w:400; --stat-ls:0;
+  --wm-size:19px; --wm-ls:.02em;
+  --series-bars:mono;
+}

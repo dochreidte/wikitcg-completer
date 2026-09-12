@@ -1,0 +1,284 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Archivo:wght@400;500;600;700&family=Anton&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    .m{
+      font-family:var(--fbody); font-size:14px; line-height:1.45;
+      color:var(--txt); background:var(--bg); -webkit-font-smoothing:antialiased;
+    }
+    .m *{box-sizing:border-box}
+    .m a{color:var(--accent); text-decoration:none}
+    .m a:hover{color:var(--txt); text-decoration:underline}
+
+    .m.t-archive{
+      --bg:#f7f4ed; --surface:#fffdf8; --sunken:#efeade;
+      --rule:#ddd5c4; --rule2:#c3b8a0;
+      --txt:#1c1a15; --txt2:#5c5546; --txt3:#8a8271;
+      --accent:#2d4f7c; --good:#41663f; --warn:#8f6b1d; --bad:#8f3030;
+      --on-accent:#fffdf8; --on-bad:#fffdf8;
+      --fdisp:"Newsreader",Georgia,serif; --fbody:"Archivo","Helvetica Neue",Arial,sans-serif;
+      --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --r:3px; --bw:1px;
+      --sec-size:16px; --sec-tr:none; --sec-ls:0; --sec-w:500;
+      --run-size:18px; --run-tr:none; --run-ls:0; --run-w:500;
+      --stat-font:var(--fmono); --stat-size:23px; --stat-w:400;
+      --wm-size:13px; --wm-ls:.13em;
+    }
+    .m.t-console{
+      --bg:#0b0d0e; --surface:#121617; --sunken:#080a0b;
+      --rule:#242c2e; --rule2:#364245;
+      --txt:#ccd8da; --txt2:#93a3a5; --txt3:#5d6b6e;
+      --accent:#c2f04a; --good:#8fd14a; --warn:#e8b04a; --bad:#e4674f;
+      --on-accent:#0b0d0e; --on-bad:#0b0d0e;
+      --fdisp:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --fbody:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --r:0px; --bw:1px;
+      --sec-size:11px; --sec-tr:uppercase; --sec-ls:.17em; --sec-w:500;
+      --run-size:13px; --run-tr:uppercase; --run-ls:.1em; --run-w:500;
+      --stat-font:var(--fmono); --stat-size:22px; --stat-w:500;
+      --wm-size:11px; --wm-ls:.2em;
+    }
+    .m.t-pressroom{
+      --bg:#eeeae1; --surface:#eeeae1; --sunken:#dcd6ca;
+      --rule:#101010; --rule2:#101010;
+      --txt:#101010; --txt2:#3a3730; --txt3:#6f6a61;
+      --accent:#d7301f; --good:#1f6b2f; --warn:#b06a00; --bad:#d7301f;
+      --on-accent:#eeeae1; --on-bad:#eeeae1;
+      --fdisp:"Anton","Arial Narrow",Impact,sans-serif;
+      --fbody:"Archivo","Helvetica Neue",Arial,sans-serif;
+      --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --r:0px; --bw:2px;
+      --sec-size:19px; --sec-tr:uppercase; --sec-ls:.01em; --sec-w:400;
+      --run-size:22px; --run-tr:uppercase; --run-ls:-.01em; --run-w:400;
+      --stat-font:var(--fdisp); --stat-size:29px; --stat-w:400;
+      --wm-size:17px; --wm-ls:.02em;
+    }
+
+    .mono{font-family:var(--fmono); font-variant-numeric:tabular-nums}
+    .caps{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--txt3); font-weight:500}
+    .hd{display:flex; align-items:center; gap:11px; padding:16px 18px 13px; border-bottom:var(--bw) solid var(--rule)}
+    .wm{font-family:var(--fdisp); font-weight:600; font-size:var(--wm-size); letter-spacing:var(--wm-ls);
+      text-transform:uppercase; line-height:1}
+    .wms{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--txt3); margin-top:3px}
+    .chip{display:inline-flex; align-items:center; gap:6px; font-size:10px; letter-spacing:.07em;
+      text-transform:uppercase; padding:4px 8px; border:var(--bw) solid var(--rule2); border-radius:var(--r);
+      color:var(--txt2); background:var(--surface); font-weight:500}
+    .chip.good{border-color:var(--good); color:var(--good)}
+    .dot{width:7px; height:7px; border-radius:50%; background:var(--txt3); flex:0 0 auto}
+    .dot.live{background:var(--good)}
+    .card{background:var(--surface); border:var(--bw) solid var(--rule); border-radius:var(--r); padding:15px 16px}
+    .sechd{display:flex; align-items:center; gap:11px; margin:0 0 10px}
+    .sechd .t{font-family:var(--fdisp); font-size:var(--sec-size); font-weight:var(--sec-w);
+      text-transform:var(--sec-tr); letter-spacing:var(--sec-ls); line-height:1.1}
+    .sechd .ln{flex-grow:1; height:var(--bw); background:var(--rule)}
+    .track{height:6px; background:var(--sunken); border:var(--bw) solid var(--rule);
+      border-radius:var(--r); overflow:hidden}
+    .track > i{display:block; height:100%}
+    .btn{font:inherit; font-size:14px; font-weight:500; cursor:pointer; border-radius:var(--r); min-height:46px;
+      padding:11px 16px; border:var(--bw) solid var(--rule2); background:var(--surface); color:var(--txt);
+      display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%}
+    .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+    .btn.danger{background:var(--bad); border-color:var(--bad); color:var(--on-bad)}
+    .st .k{font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--txt3); font-weight:500}
+    .st .v{font-family:var(--stat-font); font-variant-numeric:tabular-nums; font-size:var(--stat-size);
+      font-weight:var(--stat-w); line-height:1.1; margin-top:5px}
+    .st .v .u{font-size:11px; color:var(--txt3)}
+    .srow{display:flex; flex-direction:column; gap:7px; padding:11px 0; border-bottom:var(--bw) solid var(--rule)}
+    .srow .tp{display:flex; justify-content:space-between; align-items:baseline; gap:10px}
+    .srow .nm{font-weight:500; font-size:13.5px}
+    .srow .nu{font-family:var(--fmono); font-size:12px; color:var(--txt3)}
+    .fe{display:grid; grid-template-columns:54px 1fr; gap:10px; padding:8px 0;
+      border-bottom:var(--bw) solid var(--rule); font-size:12.5px}
+    .fe .ts{font-family:var(--fmono); font-size:10px; color:var(--txt3)}
+    .fe .ty{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--txt3); display:block; margin-top:2px}
+    .fe.warn .mg{color:var(--warn)}
+    .themebar{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0;
+      border-bottom:var(--bw) solid var(--rule)}
+    .themebar button{font:inherit; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+      background:var(--bg); color:var(--txt3); border:none; padding:9px 4px; cursor:pointer;
+      min-height:36px; border-radius:0; border-bottom:2px solid transparent}
+    .themebar button.on{color:var(--txt); font-weight:600; border-bottom-color:var(--accent)}
+    .tabs{display:grid; grid-template-columns:repeat(4, minmax(0,1fr));
+      border-top:var(--bw) solid var(--rule); background:var(--bg)}
+    .tab{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+      min-height:54px; border:none; background:transparent; cursor:pointer; color:var(--txt3);
+      font:inherit; font-size:10px; letter-spacing:.04em; border-top:2px solid transparent; border-radius:0}
+    .tab.on{color:var(--txt); border-top-color:var(--accent); font-weight:600}
+  </style>
+</helmet>
+
+<div class="m {{themeClass}}" style="width:390px; min-height:844px; display:flex; flex-direction:column">
+
+  <div class="hd">
+    <div style="flex-grow:1">
+      <div class="wm">WikiTCG</div>
+      <div class="wms">Completion engine</div>
+    </div>
+    <span class="{{statusCls}}"><span class="{{dotCls}}"></span>{{statusLabel}}</span>
+  </div>
+
+  <div class="themebar">
+    <button class="{{th.archive}}" onClick="{{setThArchive}}">Archive</button>
+    <button class="{{th.console}}" onClick="{{setThConsole}}">Console</button>
+    <button class="{{th.pressroom}}" onClick="{{setThPressroom}}">Pressroom</button>
+  </div>
+
+  <div style="flex-grow:1; padding:16px 16px 20px; display:flex; flex-direction:column; gap:18px">
+
+    <div class="card" style="display:flex; flex-direction:column; gap:12px">
+      <div>
+        <div style="font-family:var(--fdisp); font-size:var(--run-size); font-weight:var(--run-w); text-transform:var(--run-tr); letter-spacing:var(--run-ls); line-height:1.15">{{run.title}}</div>
+        <div style="font-size:12px; color:var(--txt2); margin-top:4px">{{run.sub}}</div>
+      </div>
+      <sc-if value="{{running}}" hint-placeholder-val="{{true}}">
+        <button class="btn danger" onClick="{{toggleRun}}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+          Stop the farm
+        </button>
+      </sc-if>
+      <sc-if value="{{stopped}}" hint-placeholder-val="{{true}}">
+        <button class="btn primary" onClick="{{toggleRun}}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg>
+          Start the farm
+        </button>
+      </sc-if>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:11px">
+      <div class="card st" style="padding:13px 14px">
+        <div class="k">Ink</div><div class="v" style="color:{{accent}}">1,240</div>
+      </div>
+      <div class="card st" style="padding:13px 14px">
+        <div class="k">Packs</div><div class="v">5<span class="u"> / 5</span></div>
+      </div>
+      <div class="card st" style="padding:13px 14px">
+        <div class="k">Level</div><div class="v">69</div>
+      </div>
+      <div class="card st" style="padding:13px 14px">
+        <div class="k">Collection</div><div class="v">83.8<span class="u">%</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sechd"><span class="t">Closest to completion</span><span class="ln"></span></div>
+      <div class="card" style="padding:2px 15px 8px">
+        <sc-for list="{{near}}" as="s" hint-placeholder-count="4">
+          <div class="srow">
+            <div class="tp">
+              <span class="nm">{{s.name}}</span>
+              <span class="nu">{{s.owned}}/{{s.total}}</span>
+            </div>
+            <div class="track"><i style="width:{{s.w}}; background:{{s.color}}"></i></div>
+            <div style="font-size:11px; color:var(--txt3)">{{s.sub}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div>
+      <div class="sechd"><span class="t">Recent activity</span><span class="ln"></span></div>
+      <div class="card" style="padding:2px 15px 8px">
+        <sc-for list="{{log}}" as="e" hint-placeholder-count="5">
+          <div class="{{e.cls}}">
+            <span><span class="ts">{{e.t}}</span><span class="ty">{{e.type}}</span></span>
+            <span class="mg">{{e.msg}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="tabs">
+    <button class="tab on">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z"/></svg>
+      Overview
+    </button>
+    <button class="tab">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7l8-3 8 3-8 3zM4 12l8 3 8-3M4 17l8 3 8-3"/></svg>
+      Collection
+    </button>
+    <button class="tab">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 19v-1a4 4 0 00-4-4H7a4 4 0 00-4 4v1M9.5 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"/></svg>
+      Accounts
+    </button>
+    <button class="tab">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 6h14M5 10h14M5 14h9M5 18h9"/></svg>
+      Log
+    </button>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","default":"archive","options":["archive","console","pressroom"],"section":"Direction"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props){ super(props); this.state = { running: true, theme: null }; }
+
+  THEMES(){
+    return {
+      archive:   { accent:'#2d4f7c', txt:'#1c1a15', seriesBars:'own' },
+      console:   { accent:'#c2f04a', txt:'#ccd8da', seriesBars:'own' },
+      pressroom: { accent:'#d7301f', txt:'#101010', seriesBars:'mono' }
+    };
+  }
+  themeId(){
+    const t = this.state.theme || this.props.theme || 'archive';
+    return this.THEMES()[t] ? t : 'archive';
+  }
+
+  renderVals(){
+    const st = this.state, tid = this.themeId(), T = this.THEMES()[tid];
+    const on = (c) => c ? 'on' : '';
+    const series = [
+      { name:'Masterworks',     owned:191, total:200, color:'#c4956a', sub:'9 missing · 4,588 pulls' },
+      { name:'Myths & Legends', owned:100, total:200, color:'#e85d3a', sub:'100 missing · 652 pulls' },
+      { name:'Primeval',        owned:84,  total:200, color:'#e8a13c', sub:'116 missing · 662 pulls' },
+      { name:'Living Heritage', owned:1,   total:168, color:'#e74c3c', sub:'167 missing · 1 pull' }
+    ];
+    const log = [
+      { t:'21:58', type:'open',    lvl:'info', msg:'Booster opened: 0 new, 5 duplicate(s)' },
+      { t:'21:58', type:'recycle', lvl:'info', msg:'6 duplicate(s) recycled (+1700 ink)' },
+      { t:'21:57', type:'buy',     lvl:'info', msg:'Restock bought (400 ink) → 5 packs' },
+      { t:'21:51', type:'recycle', lvl:'warn', msg:'Daily recycle quota reached — recycling paused for 60 min.' },
+      { t:'21:47', type:'sync',    lvl:'info', msg:'Sync complete.' }
+    ];
+    return {
+      themeClass: 't-' + tid,
+      accent: T.accent,
+      th: { archive: on(tid === 'archive'), console: on(tid === 'console'), pressroom: on(tid === 'pressroom') },
+      setThArchive:   () => this.setState({ theme:'archive' }),
+      setThConsole:   () => this.setState({ theme:'console' }),
+      setThPressroom: () => this.setState({ theme:'pressroom' }),
+
+      running: st.running, stopped: !st.running,
+      toggleRun: () => this.setState({ running: !st.running }),
+      statusLabel: st.running ? 'Running' : 'Stopped',
+      statusCls: 'chip ' + (st.running ? 'good' : ''),
+      dotCls: 'dot ' + (st.running ? 'live' : ''),
+      run: st.running
+        ? { title: 'Opening packs — Masterworks', sub: '5 of 5 packs left · recycling surplus as it goes' }
+        : { title: 'Stopped', sub: 'Nothing is running. 5 packs ready on “main”.' },
+      near: series.map(s => {
+        const pct = Math.round(1000 * s.owned / s.total) / 10;
+        return {
+          name: s.name, owned: s.owned.toLocaleString('en-US'), total: s.total,
+          w: pct + '%', sub: s.sub,
+          color: T.seriesBars === 'own' ? s.color : (pct < 50 ? T.accent : T.txt)
+        };
+      }),
+      log: log.map(e => ({ t: e.t, type: e.type, msg: e.msg, cls: 'fe ' + e.lvl }))
+    };
+  }
+}
+</script>
+</body>
+</html>

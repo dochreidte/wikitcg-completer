@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WikiTCG · Completion engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Archivo:wght@400;500;600;700&family=Anton&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/theme.css">
+<link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body class="t-archive">
+
+<div class="shell">
+  <!-- ============ RAIL ============ -->
+  <aside class="rail">
+    <div class="mark">
+      <div class="wm">WikiTCG</div>
+      <div class="wms">Completion engine</div>
+    </div>
+
+    <div class="acctbox">
+      <div class="hd" id="acct-head">
+        <span class="dot" id="acct-dot"></span>
+        <div style="flex-grow:1; min-width:0">
+          <div class="nm" id="acct-name">—</div>
+          <div class="sb" id="acct-focus"></div>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--txt3)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div id="acct-menu" hidden></div>
+    </div>
+
+    <div class="nav">
+      <button class="navitem on" data-view="overview">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z"/></svg>
+        Overview
+      </button>
+      <button class="navitem" data-view="collection">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7l8-3 8 3-8 3zM4 12l8 3 8-3M4 17l8 3 8-3"/></svg>
+        Collection <span class="ct" id="nav-open"></span>
+      </button>
+      <button class="navitem" data-view="accounts">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 19v-1a4 4 0 00-4-4H7a4 4 0 00-4 4v1M9.5 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM21 19v-1a4 4 0 00-3-3.9M16 3.6a4 4 0 010 7.8"/></svg>
+        Accounts <span class="ct" id="nav-accts"></span>
+      </button>
+      <button class="navitem" data-view="market">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>
+        Market <span class="ct" id="nav-mkt"></span>
+      </button>
+      <button class="navitem" data-view="settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M4 12h6M14 12h6"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/><circle cx="12" cy="12" r="2"/></svg>
+        Settings
+      </button>
+      <button class="navitem" data-view="log">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 6h14M5 10h14M5 14h9M5 18h9"/></svg>
+        Log
+      </button>
+    </div>
+
+    <div class="railfoot">
+      <span id="host-label">127.0.0.1:8765</span><br>
+      <span class="mono" id="ws-txt">connecting…</span>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb" id="crumb">Overview</div>
+      <div style="flex-grow:1"></div>
+      <span class="seg tiny" id="theme-switch" title="Visual direction">
+        <button data-theme="archive" class="on">Archive</button>
+        <button data-theme="console">Console</button>
+        <button data-theme="pressroom">Pressroom</button>
+      </span>
+      <span class="chip click" id="sess-chip" title="Session — click to paste a new cookie">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+        <span id="sess-txt">session</span>
+      </span>
+      <span class="chip" id="status-chip"><span class="dot" id="st-dot"></span><span id="st-txt">idle</span></span>
+    </div>
+
+    <div class="body">
+      <div class="alertband hide" id="banner"></div>
+      <div class="alertband hide" id="vault-warn"></div>
+
+      <!-- ---------- OVERVIEW ---------- -->
+      <section class="view on" data-view="overview">
+        <div class="runstrip" id="runstrip">
+          <div style="flex-grow:1; min-width:0">
+            <div class="runtitle" id="run-title">Loading…</div>
+            <div class="runsub" id="run-sub"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:9px">
+            <button class="btn" id="btn-sync">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/></svg>
+              Sync
+            </button>
+            <button class="btn" id="btn-next" hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              Next account
+            </button>
+            <button class="btn primary" id="btn-start">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg>
+              Start
+            </button>
+            <button class="btn danger" id="btn-stop">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+              Stop
+            </button>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="card stat">
+            <div class="k">Ink</div>
+            <div class="v" id="s-ink" style="color:var(--accent)">—</div>
+            <svg id="spark" viewBox="0 0 300 40" preserveAspectRatio="none" style="width:100%; height:38px; display:block; margin-top:8px"></svg>
+            <div class="n" id="s-ink-note"></div>
+          </div>
+          <div class="card stat">
+            <div class="k">Packs</div>
+            <div class="v"><span id="s-packs">—</span><span class="u" id="s-packs-max"></span></div>
+            <div class="track" style="margin-top:11px"><i id="s-packbar" style="width:0%; background:var(--accent)"></i></div>
+            <div class="n" id="s-regen"></div>
+          </div>
+          <div class="card stat">
+            <div class="k">Level</div>
+            <div class="v" id="s-level">—</div>
+            <div class="track" style="margin-top:11px"><i id="s-xpbar" style="width:0%; background:var(--accent)"></i></div>
+            <div class="n" id="s-xp"></div>
+          </div>
+          <div class="card stat">
+            <div class="k">Collection</div>
+            <div class="v"><span id="s-pct">—</span><span class="u">%</span></div>
+            <div class="track" style="margin-top:11px"><i id="s-pctbar" style="width:0%; background:var(--good)"></i></div>
+            <div class="n" id="s-pct-note"></div>
+          </div>
+        </div>
+
+        <div class="two">
+          <div>
+            <div class="sechd">
+              <span class="t">Closest to completion</span><span class="ln"></span>
+              <button class="btn link" data-goto="collection">All series</button>
+            </div>
+            <div class="card" style="padding:6px 16px 10px"><div id="near-list"></div></div>
+          </div>
+          <div>
+            <div class="sechd">
+              <span class="t">Recent activity</span><span class="ln"></span>
+              <button class="btn link" data-goto="log">Full log</button>
+            </div>
+            <div class="card" style="padding:6px 16px 10px"><div class="feed" id="recent-feed"></div></div>
+          </div>
+        </div>
+
+        <div class="half">
+          <div>
+            <div class="sechd"><span class="t">Pulls by rarity</span><span class="ln"></span><span class="x mono" id="pull-sub"></span></div>
+            <div class="card"><div id="pull-bars"></div></div>
+          </div>
+          <div>
+            <div class="sechd"><span class="t">Ink recovered by recycling</span><span class="ln"></span><span class="x mono" id="rec-sub"></span></div>
+            <div class="card">
+              <div id="rec-bars"></div>
+              <div id="rec-fails" style="font-size:11px; color:var(--warn); margin-top:10px"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- COLLECTION ---------- -->
+      <section class="view" data-view="collection">
+        <div class="card" style="display:flex; align-items:center; gap:26px; flex-wrap:wrap">
+          <div>
+            <div class="caps">Overall</div>
+            <div class="stat"><div class="v" style="margin-top:5px"><span id="c-pct">—</span><span class="u">%</span></div></div>
+          </div>
+          <div style="flex-grow:1; min-width:200px">
+            <div class="track tall"><i id="c-pctbar" style="width:0%; background:var(--good)"></i></div>
+            <div style="font-size:11.5px; color:var(--txt3); margin-top:8px" id="c-note"></div>
+          </div>
+          <div style="text-align:right">
+            <div class="caps">Cards still missing</div>
+            <div class="stat"><div class="v" style="margin-top:5px; color:var(--bad)" id="c-missing">—</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="sechd"><span class="t">Series</span><span class="ln"></span>
+            <span class="x">Least complete first — click a row for the missing list</span></div>
+          <div class="card" style="padding:6px 16px 10px"><div id="series-list"></div></div>
+        </div>
+      </section>
+
+      <!-- ---------- ACCOUNTS ---------- -->
+      <section class="view" data-view="accounts">
+        <div class="alertband" style="border-left-color:var(--txt3)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--txt2)"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></svg>
+          <div style="font-size:11.5px; color:var(--txt2); line-height:1.45; flex-grow:1">
+            The farm runs <b>one account at a time</b> and rotates when an account runs out of packs.
+            wikitcg exposes no refresh endpoint, so an expired account stays idle until you paste a fresh cookie.
+          </div>
+        </div>
+        <div class="acards" id="accounts-list"></div>
+        <div id="accounts-empty" class="empty" hidden>No accounts yet — add one below.</div>
+        <div>
+          <div class="sechd"><span class="t">Add an account</span><span class="ln"></span></div>
+          <div class="card" style="display:flex; gap:11px; align-items:center; flex-wrap:wrap">
+            <input type="text" id="new-acct-name" placeholder="Account name" style="width:190px">
+            <select id="new-acct-series" style="width:200px"><option value="">Series focus: auto</option></select>
+            <button class="btn primary" id="new-acct-btn">Add account</button>
+            <span id="acct-error" style="color:var(--bad); font-size:12px"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- MARKET ---------- -->
+      <section class="view" data-view="market">
+        <div class="warnband">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--bad)"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0zM12 9v4M12 17v.5"/></svg>
+          <div style="flex-grow:1">
+            <div class="wt">These are trades with real players, and they are irreversible</div>
+            <div class="wb">Publishing a listing commits one of your cards. Fulfilling someone else's offer gives
+              a card away immediately in exchange for one you are missing. Nothing here can be undone from this dashboard.</div>
+          </div>
+        </div>
+
+        <div class="half">
+          <div class="card">
+            <label class="tg dgr">
+              <input type="checkbox" id="c-mkt"><span class="sw2"></span>
+              <span><span class="lb">Publish listings automatically</span>
+              <span class="hp">Offers surplus duplicates for cards you are missing, up to the limit below.</span></span>
+            </label>
+            <label class="tg dgr" style="border-top:var(--bw) solid var(--rule)">
+              <input type="checkbox" id="c-fulfill"><span class="sw2"></span>
+              <span><span class="lb">Fulfill other players' offers</span>
+              <span class="hp">Gives one of your cards for a missing one, without asking each time.</span></span>
+            </label>
+          </div>
+          <div class="card" style="display:flex; flex-direction:column; gap:13px; justify-content:center">
+            <div class="fld"><span class="fl">Max live listings</span>
+              <input type="number" id="c-maxlist" min="1" max="20" step="1"></div>
+            <div class="fld"><span class="fl">Only series missing ≤</span>
+              <input type="number" id="c-near" min="0" max="200" step="1">
+              <span style="color:var(--txt3); font-size:11px">0 = every series</span></div>
+            <div class="fld"><span class="fl">Status</span><span class="mono" id="mkt-status" style="font-size:11.5px; color:var(--txt3)">—</span></div>
+          </div>
+        </div>
+
+        <div class="half">
+          <div>
+            <div class="sechd"><span class="t">My listings</span><span class="ln"></span>
+              <button class="btn link" id="mkt-refresh">Refresh</button></div>
+            <div class="mlist" id="mkt-mine"></div>
+          </div>
+          <div>
+            <div class="sechd"><span class="t">Open market</span><span class="ln"></span></div>
+            <div class="mlist" id="mkt-market"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- SETTINGS ---------- -->
+      <section class="view" data-view="settings">
+        <div style="display:flex; flex-direction:column; gap:22px; max-width:960px">
+          <div>
+            <div class="sechd"><span class="t">Opening</span><span class="ln"></span></div>
+            <div class="card">
+              <label class="tg"><input type="checkbox" id="c-buy"><span class="sw2"></span>
+                <span><span class="lb">Buy packs with ink</span>
+                <span class="hp">Spends ink on a full restock when free packs run out.</span></span></label>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" id="c-mystery"><span class="sw2"></span>
+                <span><span class="lb">Open the mystery pack</span>
+                <span class="hp">Roughly every 6 hours, when one is available.</span></span></label>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" id="c-autostart"><span class="sw2"></span>
+                <span><span class="lb">Start farming when the server starts</span>
+                <span class="hp">Skips the manual Start after a restart.</span></span></label>
+              <div class="fld" style="border-top:var(--bw) solid var(--rule); padding-top:14px; margin-top:6px">
+                <span class="fl">Keep an ink reserve of</span>
+                <input type="number" id="c-reserve" min="0" step="50">
+                <span style="color:var(--txt3); font-size:11px">never spent on restocks</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Recycling</span><span class="ln"></span></div>
+            <div class="card">
+              <label class="tg"><input type="checkbox" id="c-recycle"><span class="sw2"></span>
+                <span><span class="lb">Recycle duplicates automatically</span>
+                <span class="hp">Only LR, UR, SSR and SR return ink. Everything else is kept as spares.</span></span></label>
+              <div style="border-top:var(--bw) solid var(--rule); padding-top:14px; margin-top:6px; display:flex; flex-direction:column; gap:14px">
+                <div class="fld"><span class="fl">When to recycle</span>
+                  <span class="seg" id="c-recmode">
+                    <button data-v="surplus">On surplus</button><button data-v="on_demand">On demand</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)" id="h-recmode"></span>
+                </div>
+                <div class="fld"><span class="fl">Spares to keep</span>
+                  <span class="seg" id="c-resmode">
+                    <button data-v="fixed">Fixed per rarity</button><button data-v="missing">Match missing</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)" id="h-resmode"></span>
+                </div>
+                <div class="fld"><span class="fl">Recycle first</span>
+                  <span class="seg" id="c-recprio">
+                    <button data-v="common_first">Common</button><button data-v="rare_first">Rare</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)" id="h-recprio"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Diagnostics</span><span class="ln"></span></div>
+            <div class="card" style="display:flex; flex-direction:column; gap:14px">
+              <div class="fld"><span class="fl">Log level</span>
+                <span class="seg" id="c-loglevel">
+                  <button data-v="DEBUG">Debug</button><button data-v="INFO">Info</button>
+                  <button data-v="WARNING">Warning</button><button data-v="ERROR">Error</button>
+                </span>
+              </div>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule); padding-top:12px">
+                <input type="checkbox" id="c-logreq"><span class="sw2"></span>
+                <span><span class="lb">Trace every HTTP request</span>
+                <span class="hp">Verbose — writes every call to wikitcg.log.</span></span></label>
+              <div style="border-top:var(--bw) solid var(--rule); padding-top:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+                <button class="btn sm" id="c-reset">Reset all settings to defaults</button>
+                <span style="font-size:11px; color:var(--txt3)" id="cfg-over"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- LOG ---------- -->
+      <section class="view" data-view="log">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+          <span class="caps">Filter</span>
+          <span class="seg" id="log-filter">
+            <button data-v="all" class="on">Everything</button>
+            <button data-v="warn">Warnings</button>
+            <button data-v="error">Errors</button>
+          </span>
+          <div style="flex-grow:1"></div>
+          <span class="mono" style="font-size:11px; color:var(--txt3)" id="log-count"></span>
+        </div>
+        <div class="card" style="padding:6px 16px 10px"><div class="feed" id="full-feed"></div></div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="overlay side" id="ov-series"><div class="sheet" id="series-sheet"></div></div>
+<div class="overlay mid" id="ov-modal"><div class="sheet" id="modal-sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# Secrets
+config.toml
+accounts.toml
+.env
+.env.*
+
+# Runtime data
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.log
+*.log.*
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+.claude/
