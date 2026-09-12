@@ -1,0 +1,1262 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Archivo:wght@400;500;600;700&family=Anton&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    .app{
+      font-family:var(--fbody); font-size:13px; line-height:1.45;
+      color:var(--txt); background:var(--bg); -webkit-font-smoothing:antialiased;
+      --pad:20px; --row:12px;
+    }
+    .app.compact{ --pad:13px; --row:7px; font-size:12px; }
+    .app *{box-sizing:border-box}
+    .app a{color:var(--accent); text-decoration:none}
+    .app a:hover{color:var(--txt); text-decoration:underline}
+
+    /* ============ THEME A — ARCHIVE ============ */
+    .app.t-archive{
+      --bg:#f7f4ed; --surface:#fffdf8; --sunken:#efeade;
+      --rule:#ddd5c4; --rule2:#c3b8a0;
+      --txt:#1c1a15; --txt2:#5c5546; --txt3:#8a8271;
+      --accent:#2d4f7c; --good:#41663f; --warn:#8f6b1d; --bad:#8f3030;
+      --on-accent:#fffdf8; --on-bad:#fffdf8;
+      --danger-bg:#fdf6f2; --warn-bg:#fbf7ec; --danger-rule:#cfa0a0;
+      --lr:#7b3fa8; --ur:#b4532a; --ssr:#9a7420; --sr:#2b6c85; --rr:#41663f; --uc:#6e6045; --cc:#8a8271;
+      --fdisp:"Newsreader",Georgia,serif; --fbody:"Archivo","Helvetica Neue",Arial,sans-serif;
+      --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --r:3px; --bw:1px; --grain:.4;
+      --sec-size:17px; --sec-tr:none; --sec-ls:.005em; --sec-w:500;
+      --run-size:19px; --run-tr:none; --run-ls:0; --run-w:500;
+      --stat-font:var(--fmono); --stat-size:27px; --stat-w:400; --stat-ls:-.01em;
+      --wm-ls:.13em; --wm-size:15px;
+    }
+    /* ============ THEME B — CONSOLE ============ */
+    .app.t-console{
+      --bg:#0b0d0e; --surface:#121617; --sunken:#080a0b;
+      --rule:#242c2e; --rule2:#364245;
+      --txt:#ccd8da; --txt2:#93a3a5; --txt3:#5d6b6e;
+      --accent:#c2f04a; --good:#8fd14a; --warn:#e8b04a; --bad:#e4674f;
+      --on-accent:#0b0d0e; --on-bad:#0b0d0e;
+      --danger-bg:#1a1011; --warn-bg:#17150d; --danger-rule:#6b3730;
+      --lr:#e0a3ff; --ur:#ff9d6b; --ssr:#ffd166; --sr:#6fb3c9; --rr:#7bbf6a; --uc:#b9a884; --cc:#8d7c5c;
+      --fdisp:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --fbody:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --r:0px; --bw:1px; --grain:0;
+      --sec-size:11px; --sec-tr:uppercase; --sec-ls:.17em; --sec-w:500;
+      --run-size:14px; --run-tr:uppercase; --run-ls:.1em; --run-w:500;
+      --stat-font:var(--fmono); --stat-size:26px; --stat-w:500; --stat-ls:0;
+      --wm-ls:.2em; --wm-size:12px;
+    }
+    /* ============ THEME C — PRESSROOM ============ */
+    .app.t-pressroom{
+      --bg:#eeeae1; --surface:#eeeae1; --sunken:#dcd6ca;
+      --rule:#101010; --rule2:#101010;
+      --txt:#101010; --txt2:#3a3730; --txt3:#6f6a61;
+      --accent:#d7301f; --good:#1f6b2f; --warn:#b06a00; --bad:#d7301f;
+      --on-accent:#eeeae1; --on-bad:#eeeae1;
+      --danger-bg:#eeeae1; --warn-bg:#eeeae1; --danger-rule:#d7301f;
+      --lr:#6a1fa8; --ur:#c2410c; --ssr:#a16207; --sr:#155e75; --rr:#15803d; --uc:#57534e; --cc:#78716c;
+      --fdisp:"Anton","Arial Narrow",Impact,sans-serif;
+      --fbody:"Archivo","Helvetica Neue",Arial,sans-serif;
+      --fmono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+      --r:0px; --bw:2px; --grain:0;
+      --sec-size:20px; --sec-tr:uppercase; --sec-ls:.01em; --sec-w:400;
+      --run-size:24px; --run-tr:uppercase; --run-ls:-.01em; --run-w:400;
+      --stat-font:var(--fdisp); --stat-size:34px; --stat-w:400; --stat-ls:0;
+      --wm-ls:.02em; --wm-size:19px;
+    }
+
+    .grain{position:absolute; inset:0; pointer-events:none; z-index:6; opacity:var(--grain);
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.055'/%3E%3C/svg%3E")}
+
+    .mono{font-family:var(--fmono); font-variant-numeric:tabular-nums}
+    .caps{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--txt3); font-weight:500}
+
+    /* ---- rail ---- */
+    .rail{border-right:var(--bw) solid var(--rule); background:var(--bg); padding:22px 0 18px;
+      display:flex; flex-direction:column; gap:24px}
+    .mark{padding:0 20px}
+    .mark .wm{font-family:var(--fdisp); font-weight:600; font-size:var(--wm-size); letter-spacing:var(--wm-ls);
+      text-transform:uppercase; line-height:1}
+    .mark .wms{font-size:9.5px; letter-spacing:.17em; text-transform:uppercase; color:var(--txt3); margin-top:4px}
+    .acctbox{margin:0 14px; border:var(--bw) solid var(--rule); background:var(--surface); border-radius:var(--r)}
+    .acctbox .hd{display:flex; align-items:center; gap:9px; padding:9px 11px; cursor:pointer}
+    .acctbox .nm{font-weight:600; font-size:13px; line-height:1.2}
+    .acctbox .sb{font-size:10.5px; color:var(--txt3); line-height:1.2; margin-top:2px}
+    .acctopt{display:flex; align-items:center; gap:9px; padding:8px 11px; border-top:var(--bw) solid var(--rule);
+      cursor:pointer; background:transparent}
+    .acctopt:hover{background:var(--sunken)}
+    .nav{display:flex; flex-direction:column; gap:1px; padding:0 10px}
+    .navitem{display:flex; align-items:center; gap:11px; padding:7px 10px; border:none; cursor:pointer;
+      background:transparent; color:var(--txt2); font:inherit; font-size:13px; text-align:left;
+      border-left:2px solid transparent; width:100%; border-radius:0}
+    .navitem:hover{color:var(--txt); background:var(--sunken)}
+    .navitem.on{color:var(--txt); font-weight:600; border-left-color:var(--accent); background:var(--sunken)}
+    .navitem .ct{margin-left:auto; font-size:10.5px; color:var(--txt3)}
+    .railfoot{margin-top:auto; padding:0 20px; font-size:10px; color:var(--txt3); line-height:1.5}
+
+    /* ---- shell ---- */
+    .main{display:flex; flex-direction:column; min-width:0}
+    .topbar{display:flex; align-items:center; gap:12px; padding:0 26px; height:54px;
+      border-bottom:var(--bw) solid var(--rule); flex:0 0 auto}
+    .crumb{font-family:var(--fdisp); font-size:var(--sec-size); font-weight:var(--sec-w);
+      text-transform:var(--sec-tr); letter-spacing:var(--sec-ls)}
+    .body{padding:24px 26px 34px; display:flex; flex-direction:column; gap:22px}
+
+    .chip{display:inline-flex; align-items:center; gap:6px; font-size:10.5px; letter-spacing:.07em;
+      text-transform:uppercase; padding:4px 9px; border:var(--bw) solid var(--rule2); border-radius:var(--r);
+      color:var(--txt2); background:var(--surface); font-weight:500}
+    .chip.good{border-color:var(--good); color:var(--good)}
+    .chip.warn{border-color:var(--warn); color:var(--warn)}
+    .chip.bad{border-color:var(--bad); color:var(--bad)}
+    .dot{width:7px; height:7px; border-radius:50%; background:var(--txt3); flex:0 0 auto}
+    .dot.live{background:var(--good)} .dot.stop{background:var(--txt3)} .dot.err{background:var(--bad)}
+
+    .btn{font:inherit; font-size:12.5px; font-weight:500; cursor:pointer; border-radius:var(--r);
+      padding:7px 13px; border:var(--bw) solid var(--rule2); background:var(--surface); color:var(--txt);
+      display:inline-flex; align-items:center; gap:7px; transition:background .12s,border-color .12s}
+    .btn:hover{background:var(--sunken)}
+    .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+    .btn.primary:hover{filter:brightness(1.1); background:var(--accent)}
+    .btn.danger{background:var(--bad); border-color:var(--bad); color:var(--on-bad)}
+    .btn.danger:hover{filter:brightness(1.1); background:var(--bad)}
+    .btn.sm{padding:4px 9px; font-size:11.5px}
+    .btn.link{border-color:transparent; background:transparent; color:var(--accent); padding:4px 2px}
+    .btn.link:hover{background:transparent; text-decoration:underline}
+
+    .card{background:var(--surface); border:var(--bw) solid var(--rule); border-radius:var(--r); padding:var(--pad)}
+    .sechd{display:flex; align-items:center; gap:12px; margin-bottom:12px}
+    .sechd .t{font-family:var(--fdisp); font-size:var(--sec-size); font-weight:var(--sec-w);
+      text-transform:var(--sec-tr); letter-spacing:var(--sec-ls); line-height:1.1}
+    .sechd .ln{flex-grow:1; height:var(--bw); background:var(--rule)}
+    .sechd .x{font-size:11px; color:var(--txt3)}
+
+    .runstrip{background:var(--surface); border:var(--bw) solid var(--rule); border-left:3px solid var(--good);
+      border-radius:var(--r); padding:14px 18px}
+    .runstrip.off{border-left-color:var(--txt3)}
+    .runtitle{font-family:var(--fdisp); font-size:var(--run-size); font-weight:var(--run-w);
+      text-transform:var(--run-tr); letter-spacing:var(--run-ls); line-height:1.15}
+    .runsub{font-size:12px; color:var(--txt2); margin-top:3px}
+
+    .stat .k{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--txt3); font-weight:500}
+    .stat .v{font-family:var(--stat-font); font-variant-numeric:tabular-nums; font-size:var(--stat-size);
+      font-weight:var(--stat-w); letter-spacing:var(--stat-ls); line-height:1.1; margin-top:7px}
+    .stat .v .u{font-size:13px; color:var(--txt3)}
+    .stat .n{font-size:11px; color:var(--txt3); margin-top:6px; min-height:15px}
+
+    .track{height:5px; background:var(--sunken); border:var(--bw) solid var(--rule); border-radius:var(--r); overflow:hidden}
+    .track > i{display:block; height:100%}
+    .track.tall{height:9px}
+
+    .srow{display:grid; grid-template-columns:1fr 132px 92px; gap:14px; align-items:center;
+      padding:var(--row) 4px; border-bottom:var(--bw) solid var(--rule); cursor:pointer; background:transparent;
+      border-left:none; border-right:none; border-top:none; width:100%; text-align:left; font:inherit; color:inherit}
+    .srow:hover{background:var(--sunken)}
+    .srow .nm{font-weight:500}
+    .srow .sb{font-size:11px; color:var(--txt3); margin-top:2px}
+    .srow .num{text-align:right; font-family:var(--fmono); font-variant-numeric:tabular-nums; font-size:12px}
+    .srow .pc{font-size:11px; color:var(--txt3)}
+
+    .feed{display:flex; flex-direction:column}
+    .fe{display:grid; grid-template-columns:62px 58px 1fr auto; gap:11px; align-items:baseline;
+      padding:7px 2px; border-bottom:var(--bw) solid var(--rule); font-size:12.5px}
+    .fe .ts{font-family:var(--fmono); font-size:10.5px; color:var(--txt3)}
+    .fe .ty{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--txt3); font-weight:500}
+    .fe .mg{color:var(--txt); line-height:1.4}
+    .fe .dl{font-family:var(--fmono); font-size:11.5px; white-space:nowrap}
+    .fe.warn .mg{color:var(--warn)}
+    .fe.error .mg{color:var(--bad)} .fe.error .ty{color:var(--bad)}
+
+    .rar{display:inline-flex; align-items:center; gap:6px}
+    .sw{width:9px; height:9px; flex:0 0 auto}
+    .rrow{display:grid; grid-template-columns:34px 1fr 104px; gap:10px; align-items:center; padding:4px 0}
+    .rrow .rk{font-family:var(--fmono); font-size:11px; font-weight:500}
+    .rrow .rv{text-align:right; font-family:var(--fmono); font-variant-numeric:tabular-nums;
+      font-size:11px; color:var(--txt3)}
+
+    .acard{background:var(--surface); border:var(--bw) solid var(--rule); border-radius:var(--r);
+      padding:16px 17px; display:flex; flex-direction:column; gap:13px}
+    .acard.cur{border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent)}
+    .acard.bad{border-color:var(--danger-rule)}
+    .kv{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px}
+    .kv .k{font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--txt3)}
+    .kv .v{font-family:var(--fmono); font-variant-numeric:tabular-nums; font-size:15px; margin-top:2px}
+
+    .tg{display:flex; align-items:flex-start; gap:11px; cursor:pointer; user-select:none; padding:7px 0}
+    .tg input{display:none}
+    .sw2{width:34px; height:19px; border-radius:var(--r); background:var(--sunken);
+      border:var(--bw) solid var(--rule2); position:relative; flex:0 0 auto;
+      transition:background .14s,border-color .14s; margin-top:1px}
+    .sw2::after{content:""; position:absolute; top:2px; left:2px; width:13px; height:13px;
+      background:var(--txt3); transition:transform .16s,background .16s}
+    .tg input:checked + .sw2{background:var(--accent); border-color:var(--accent)}
+    .tg input:checked + .sw2::after{transform:translateX(15px); background:var(--on-accent)}
+    .tg.dgr input:checked + .sw2{background:var(--bad); border-color:var(--bad)}
+    .tg.dgr input:checked + .sw2::after{background:var(--on-bad)}
+    .tg .lb{font-size:12.5px; font-weight:500; line-height:1.3}
+    .tg .hp{font-size:11px; color:var(--txt3); line-height:1.35; margin-top:2px}
+
+    .seg{display:inline-flex; border:var(--bw) solid var(--rule2); border-radius:var(--r); overflow:hidden}
+    .seg button{font:inherit; font-size:11.5px; background:var(--surface); color:var(--txt2); border:none;
+      padding:5px 11px; cursor:pointer; border-radius:0}
+    .seg button + button{border-left:var(--bw) solid var(--rule2)}
+    .seg button.on{background:var(--accent); color:var(--on-accent); font-weight:500}
+    .seg.tiny button{padding:4px 9px; font-size:10px; letter-spacing:.07em; text-transform:uppercase}
+    .fld{display:flex; align-items:center; gap:9px; font-size:12.5px}
+    .fld input, .fld select{font:inherit; font-family:var(--fmono); font-size:12px; background:var(--surface);
+      border:var(--bw) solid var(--rule2); color:var(--txt); border-radius:var(--r); padding:5px 8px; width:78px}
+    .fld input:focus, .fld select:focus{outline:none; border-color:var(--accent)}
+    .setrow{display:grid; grid-template-columns:1fr 1fr; gap:6px 30px; align-items:start}
+
+    .warnband{border:var(--bw) solid var(--danger-rule); border-left:3px solid var(--bad);
+      border-radius:var(--r); padding:12px 15px; background:var(--danger-bg);
+      display:flex; gap:12px; align-items:flex-start}
+    .warnband .wt{font-weight:600; font-size:12.5px; color:var(--bad)}
+    .warnband .wb{font-size:11.5px; color:var(--txt2); line-height:1.45; margin-top:3px}
+    .alertband{border:var(--bw) solid var(--rule2); border-left:3px solid var(--warn); border-radius:var(--r);
+      padding:11px 15px; background:var(--warn-bg); display:flex; gap:12px; align-items:center}
+
+    .mrow{display:grid; grid-template-columns:1fr 18px 1fr auto; gap:10px; align-items:center;
+      padding:8px 11px; border:var(--bw) solid var(--rule); border-radius:var(--r);
+      background:var(--surface); font-size:12px}
+    .mrow .ar{color:var(--txt3); text-align:center}
+
+    .sheet{position:absolute; inset:0; z-index:20; background:rgba(10,9,7,.42);
+      display:flex; align-items:stretch; justify-content:flex-end}
+    .sheetin{width:470px; background:var(--bg); border-left:var(--bw) solid var(--rule2);
+      box-shadow:-18px 0 48px rgba(10,9,7,.28); padding:22px 24px; overflow:auto;
+      display:flex; flex-direction:column; gap:16px}
+    .sheet.mid{align-items:center; justify-content:center}
+    .sheet.mid .sheetin{width:min(560px,92%); max-height:84%; border:var(--bw) solid var(--rule2);
+      border-radius:var(--r); box-shadow:0 26px 64px rgba(10,9,7,.34)}
+    .ta{width:100%; min-height:76px; resize:vertical; background:var(--surface);
+      border:var(--bw) solid var(--rule2); color:var(--txt); border-radius:var(--r); padding:9px 10px;
+      font-family:var(--fmono); font-size:11.5px; word-break:break-all; line-height:1.5}
+    .ta:focus{outline:none; border-color:var(--accent)}
+    .chipsr{display:flex; flex-wrap:wrap; gap:7px}
+    .rchip{display:inline-flex; align-items:center; gap:7px; font-family:var(--fmono); font-size:11.5px;
+      padding:5px 9px; border:var(--bw) solid var(--rule); border-radius:var(--r); background:var(--surface)}
+    .rchip.full{border-color:var(--good)}
+    .mrowx{display:flex; justify-content:space-between; gap:10px; padding:6px 0;
+      border-bottom:var(--bw) solid var(--rule); font-size:12.5px}
+    .sheetttl{font-family:var(--fdisp); font-size:var(--run-size); font-weight:var(--run-w);
+      text-transform:var(--run-tr); letter-spacing:var(--run-ls)}
+  </style>
+</helmet>
+
+<div class="app {{themeClass}} {{densClass}}" style="position:relative; min-height:1080px; display:grid; grid-template-columns:236px 1fr">
+  <div class="grain"></div>
+
+  <!-- ============ RAIL ============ -->
+  <aside class="rail">
+    <div class="mark">
+      <div class="wm">WikiTCG</div>
+      <div class="wms">Completion engine</div>
+    </div>
+
+    <div class="acctbox">
+      <div class="hd" onClick="{{toggleAcctMenu}}">
+        <span class="{{acct.dotCls}}"></span>
+        <div style="flex-grow:1; min-width:0">
+          <div class="nm">{{acct.name}}</div>
+          <div class="sb">{{acct.sub}}</div>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--txt3)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <sc-if value="{{acctMenuOpen}}" hint-placeholder-val="{{true}}">
+        <sc-for list="{{acctOptions}}" as="o" hint-placeholder-count="3">
+          <div class="acctopt" onClick="{{o.pick}}">
+            <span class="{{o.dotCls}}"></span>
+            <div style="flex-grow:1; min-width:0">
+              <div style="font-size:12.5px; font-weight:500">{{o.name}}</div>
+              <div style="font-size:10.5px; color:var(--txt3)">{{o.sub}}</div>
+            </div>
+          </div>
+        </sc-for>
+      </sc-if>
+    </div>
+
+    <div class="nav">
+      <button class="navitem {{nv.overview}}" onClick="{{goOverview}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z"/></svg>
+        Overview
+      </button>
+      <button class="navitem {{nv.collection}}" onClick="{{goCollection}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7l8-3 8 3-8 3zM4 12l8 3 8-3M4 17l8 3 8-3"/></svg>
+        Collection <span class="ct mono">{{counts.open}}</span>
+      </button>
+      <button class="navitem {{nv.accounts}}" onClick="{{goAccounts}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 19v-1a4 4 0 00-4-4H7a4 4 0 00-4 4v1M9.5 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM21 19v-1a4 4 0 00-3-3.9M16 3.6a4 4 0 010 7.8"/></svg>
+        Accounts <span class="ct mono">{{counts.accts}}</span>
+      </button>
+      <button class="navitem {{nv.market}}" onClick="{{goMarket}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>
+        Market <span class="ct mono">{{counts.mkt}}</span>
+      </button>
+      <button class="navitem {{nv.settings}}" onClick="{{goSettings}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M4 12h6M14 12h6"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/><circle cx="12" cy="12" r="2"/></svg>
+        Settings
+      </button>
+      <button class="navitem {{nv.log}}" onClick="{{goLog}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 6h14M5 10h14M5 14h9M5 18h9"/></svg>
+        Log
+      </button>
+    </div>
+
+    <div class="railfoot">
+      127.0.0.1:8765<br>
+      <span class="mono">{{wsLabel}}</span>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb">{{viewTitle}}</div>
+      <div style="flex-grow:1"></div>
+      <span class="seg tiny" title="Visual direction">
+        <button class="{{th.archive}}" onClick="{{setThArchive}}">Archive</button>
+        <button class="{{th.console}}" onClick="{{setThConsole}}">Console</button>
+        <button class="{{th.pressroom}}" onClick="{{setThPressroom}}">Pressroom</button>
+      </span>
+      <span class="{{sessChipCls}}" onClick="{{openCookie}}" style="cursor:pointer">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+        {{sessLabel}}
+      </span>
+      <span class="{{statusChipCls}}"><span class="{{runDotCls}}"></span>{{statusLabel}}</span>
+    </div>
+
+    <div class="body">
+
+      <!-- ---------- OVERVIEW ---------- -->
+      <sc-if value="{{isOverview}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex; flex-direction:column; gap:22px">
+
+          <sc-if value="{{showSessionAlert}}" hint-placeholder-val="{{true}}">
+            <div class="alertband">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--warn)"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+              <div style="flex-grow:1">
+                <span style="font-weight:600; font-size:12.5px">{{sessAlert.title}}</span>
+                <span style="font-size:12px; color:var(--txt2)"> — {{sessAlert.body}}</span>
+              </div>
+              <button class="btn sm" onClick="{{openCookie}}">Paste cookie</button>
+            </div>
+          </sc-if>
+
+          <div class="{{runStripCls}}" style="display:flex; align-items:center; gap:18px">
+            <div style="display:flex; flex-direction:column; flex-grow:1; min-width:0">
+              <div class="runtitle">{{run.title}}</div>
+              <div class="runsub">{{run.sub}}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:9px">
+              <button class="btn" onClick="{{doSync}}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/></svg>
+                Sync
+              </button>
+              <sc-if value="{{running}}" hint-placeholder-val="{{true}}">
+                <button class="btn danger" onClick="{{toggleRun}}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+                  Stop
+                </button>
+              </sc-if>
+              <sc-if value="{{stopped}}" hint-placeholder-val="{{true}}">
+                <button class="btn primary" onClick="{{toggleRun}}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg>
+                  Start
+                </button>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:14px">
+            <div class="card stat">
+              <div class="k">Ink</div>
+              <div class="v" style="color:{{accent}}">{{stats.ink}}</div>
+              <svg viewBox="0 0 300 40" preserveAspectRatio="none" style="width:100%; height:38px; display:block; margin-top:8px">
+                <polygon points="{{spark.area}}" fill="{{spark.fill}}"></polygon>
+                <polyline points="{{spark.line}}" fill="none" stroke="{{accent}}" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+              </svg>
+              <div class="n">{{stats.inkNote}}</div>
+            </div>
+            <div class="card stat">
+              <div class="k">Packs</div>
+              <div class="v">{{stats.packs}}<span class="u"> / {{stats.packsMax}}</span></div>
+              <div class="track" style="margin-top:11px"><i style="width:{{stats.packsPct}}; background:{{accent}}"></i></div>
+              <div class="n">{{stats.packsNote}}</div>
+            </div>
+            <div class="card stat">
+              <div class="k">Level</div>
+              <div class="v">{{stats.level}}</div>
+              <div class="track" style="margin-top:11px"><i style="width:{{stats.xpPct}}; background:{{accent}}"></i></div>
+              <div class="n">{{stats.xpNote}}</div>
+            </div>
+            <div class="card stat">
+              <div class="k">Collection</div>
+              <div class="v">{{stats.pct}}<span class="u">%</span></div>
+              <div class="track" style="margin-top:11px"><i style="width:{{stats.pctW}}; background:{{goodCol}}"></i></div>
+              <div class="n">{{stats.pctNote}}</div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.05fr 1fr; gap:20px; align-items:start">
+            <div>
+              <div class="sechd">
+                <span class="t">Closest to completion</span><span class="ln"></span>
+                <button class="btn link" onClick="{{goCollection}}">All series</button>
+              </div>
+              <div class="card" style="padding:6px 16px 10px">
+                <sc-for list="{{nearDone}}" as="s" hint-placeholder-count="4">
+                  <button class="srow" onClick="{{s.open}}">
+                    <div style="min-width:0">
+                      <div class="nm">{{s.name}}</div>
+                      <div class="sb">{{s.sub}}</div>
+                    </div>
+                    <div class="track" style="width:100%"><i style="width:{{s.w}}; background:{{s.color}}"></i></div>
+                    <div>
+                      <div class="num">{{s.owned}}<span style="color:var(--txt3)">/{{s.total}}</span></div>
+                      <div class="num pc">{{s.pct}}%</div>
+                    </div>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div>
+              <div class="sechd">
+                <span class="t">Recent activity</span><span class="ln"></span>
+                <button class="btn link" onClick="{{goLog}}">Full log</button>
+              </div>
+              <div class="card" style="padding:6px 16px 10px">
+                <div class="feed">
+                  <sc-for list="{{recentLog}}" as="e" hint-placeholder-count="7">
+                    <div class="{{e.cls}}">
+                      <span class="ts">{{e.t}}</span>
+                      <span class="ty">{{e.type}}</span>
+                      <span class="mg">{{e.msg}}</span>
+                      <span class="dl" style="color:{{e.dcol}}">{{e.delta}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px; align-items:start">
+            <div>
+              <div class="sechd"><span class="t">Pulls by rarity</span><span class="ln"></span><span class="x mono">{{pullTotal}} pulls</span></div>
+              <div class="card">
+                <sc-for list="{{pulls}}" as="p" hint-placeholder-count="7">
+                  <div class="rrow">
+                    <span class="rk" style="color:{{p.color}}">{{p.rarity}}</span>
+                    <span class="track"><i style="width:{{p.w}}; background:{{p.color}}"></i></span>
+                    <span class="rv">{{p.count}} · {{p.new}} new</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div class="sechd"><span class="t">Ink recovered by recycling</span><span class="ln"></span><span class="x mono">{{recycle.total}}</span></div>
+              <div class="card">
+                <sc-for list="{{recycle.rows}}" as="r" hint-placeholder-count="5">
+                  <div class="rrow">
+                    <span class="rk" style="color:{{r.color}}">{{r.rarity}}</span>
+                    <span class="track"><i style="width:{{r.w}}; background:{{r.color}}"></i></span>
+                    <span class="rv">{{r.ink}} ink · {{r.count}}</span>
+                  </div>
+                </sc-for>
+                <div style="font-size:11px; color:var(--txt3); margin-top:10px; border-top:var(--bw) solid var(--rule); padding-top:9px">
+                  R, UC and C recycle for 0 ink — they are kept or discarded, never sold.
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </sc-if>
+
+      <!-- ---------- COLLECTION ---------- -->
+      <sc-if value="{{isCollection}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex; flex-direction:column; gap:18px">
+          <div class="card" style="display:flex; align-items:center; gap:26px">
+            <div>
+              <div class="caps">Overall</div>
+              <div class="stat"><div class="v" style="margin-top:5px">{{stats.pct}}<span class="u">%</span></div></div>
+            </div>
+            <div style="flex-grow:1">
+              <div class="track tall"><i style="width:{{stats.pctW}}; background:{{goodCol}}"></i></div>
+              <div style="font-size:11.5px; color:var(--txt3); margin-top:8px">{{stats.pctNote}}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="caps">Cards still missing</div>
+              <div class="stat"><div class="v" style="margin-top:5px; color:var(--bad)">{{stats.missing}}</div></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Series</span><span class="ln"></span><span class="x">Sorted by least complete — click a row for the missing list</span></div>
+            <div class="card" style="padding:6px 16px 10px">
+              <sc-for list="{{allSeries}}" as="s" hint-placeholder-count="8">
+                <button class="srow" onClick="{{s.open}}">
+                  <div style="min-width:0">
+                    <div class="nm" style="color:{{s.nameCol}}">{{s.name}}</div>
+                    <div class="sb">{{s.sub}}</div>
+                  </div>
+                  <div class="track" style="width:100%"><i style="width:{{s.w}}; background:{{s.color}}"></i></div>
+                  <div>
+                    <div class="num">{{s.owned}}<span style="color:var(--txt3)">/{{s.total}}</span></div>
+                    <div class="num pc">{{s.pct}}%</div>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ---------- ACCOUNTS ---------- -->
+      <sc-if value="{{isAccounts}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex; flex-direction:column; gap:18px">
+          <div class="alertband" style="border-left-color:var(--txt3)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--txt2)"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></svg>
+            <div style="font-size:11.5px; color:var(--txt2); line-height:1.45">
+              The farm runs <b>one account at a time</b> and rotates when an account runs out of packs.
+              Sessions cannot be refreshed automatically — wikitcg exposes no refresh endpoint, so an expired
+              account stays idle until you paste a fresh cookie.
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:15px">
+            <sc-for list="{{accountCards}}" as="a" hint-placeholder-count="3">
+              <div class="{{a.cls}}">
+                <div style="display:flex; align-items:flex-start; gap:10px">
+                  <div style="flex-grow:1; min-width:0">
+                    <div style="display:flex; align-items:center; gap:8px">
+                      <span class="runtitle" style="font-size:17px">{{a.name}}</span>
+                      <sc-if value="{{a.isCurrent}}" hint-placeholder-val="{{true}}">
+                        <span class="chip" style="border-color:{{accent}}; color:{{accent}}">Active</span>
+                      </sc-if>
+                    </div>
+                    <div style="font-size:11.5px; color:var(--txt3); margin-top:3px">{{a.focus}}</div>
+                  </div>
+                  <span class="{{a.sessCls}}">{{a.sessLabel}}</span>
+                </div>
+
+                <div class="kv">
+                  <div><div class="k">Level</div><div class="v">{{a.level}}</div></div>
+                  <div><div class="k">Ink</div><div class="v">{{a.ink}}</div></div>
+                  <div><div class="k">Packs</div><div class="v">{{a.packs}}</div></div>
+                  <div><div class="k">Opened</div><div class="v">{{a.opened}}</div></div>
+                </div>
+
+                <sc-if value="{{a.needsCookie}}" hint-placeholder-val="{{true}}">
+                  <div style="border:var(--bw) solid var(--danger-rule); border-radius:var(--r); padding:9px 11px; background:var(--danger-bg)">
+                    <div style="font-size:11.5px; color:var(--bad); font-weight:500">{{a.cookieMsg}}</div>
+                    <button class="btn sm" style="margin-top:8px" onClick="{{a.cookie}}">Paste session cookie</button>
+                  </div>
+                </sc-if>
+
+                <div style="display:flex; gap:7px; flex-wrap:wrap; border-top:var(--bw) solid var(--rule); padding-top:11px">
+                  <sc-if value="{{a.notCurrent}}" hint-placeholder-val="{{true}}">
+                    <button class="btn sm" onClick="{{a.activate}}">Switch to</button>
+                  </sc-if>
+                  <button class="btn sm" onClick="{{a.cookie}}">Cookie</button>
+                  <button class="btn sm">Edit</button>
+                  <button class="btn sm" style="color:var(--bad)">Delete</button>
+                </div>
+              </div>
+            </sc-for>
+
+            <div class="card" style="border-style:dashed; display:flex; flex-direction:column; gap:11px; justify-content:center">
+              <div class="caps">Add an account</div>
+              <input class="ta" style="min-height:0; padding:6px 9px; font-size:12px" placeholder="Account name">
+              <select style="font-family:var(--fmono); font-size:12px; padding:6px 8px; border:var(--bw) solid var(--rule2); border-radius:var(--r); background:var(--surface); color:var(--txt)">
+                <option>Series focus: auto</option>
+                <option>Masterworks</option>
+                <option>Primeval</option>
+                <option>Myths &amp; Legends</option>
+              </select>
+              <button class="btn primary" style="justify-content:center">Add account</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ---------- MARKET ---------- -->
+      <sc-if value="{{isMarket}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex; flex-direction:column; gap:18px">
+          <div class="warnband">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--bad)"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0zM12 9v4M12 17v.5"/></svg>
+            <div style="flex-grow:1">
+              <div class="wt">These are trades with real players, and they are irreversible</div>
+              <div class="wb">Publishing a listing commits one of your cards. Fulfilling someone else's offer
+                gives a card away immediately in exchange for one you are missing. Nothing here can be undone
+                from this dashboard.</div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:15px">
+            <div class="card">
+              <label class="tg dgr">
+                <input type="checkbox" checked="{{cfg.market}}" onChange="{{togMarket}}">
+                <span class="sw2"></span>
+                <span>
+                  <span class="lb">Publish listings automatically</span>
+                  <span class="hp">Offers your surplus duplicates for cards you are missing, up to {{cfg.maxlist}} live listings.</span>
+                </span>
+              </label>
+              <label class="tg dgr" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" checked="{{cfg.fulfill}}" onChange="{{togFulfill}}">
+                <span class="sw2"></span>
+                <span>
+                  <span class="lb">Fulfill other players' offers</span>
+                  <span class="hp">Gives one of your cards for a missing one, without asking each time.</span>
+                </span>
+              </label>
+            </div>
+            <div class="card" style="display:flex; flex-direction:column; gap:12px; justify-content:center">
+              <div class="setrow" style="grid-template-columns:1fr; gap:11px">
+                <div class="fld"><span style="width:150px; color:var(--txt2)">Max live listings</span><input type="number" defaultValue="5"></div>
+                <div class="fld"><span style="width:150px; color:var(--txt2)">Only series missing ≤</span><input type="number" defaultValue="0"><span style="color:var(--txt3); font-size:11px">0 = every series</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px; align-items:start">
+            <div>
+              <div class="sechd"><span class="t">My listings</span><span class="ln"></span><span class="x mono">{{mineActive}} active</span></div>
+              <div style="display:flex; flex-direction:column; gap:6px">
+                <sc-for list="{{myListings}}" as="l" hint-placeholder-count="3">
+                  <div class="mrow">
+                    <span class="mono rar"><span class="sw" style="background:{{l.color}}"></span>{{l.offered}}</span>
+                    <span class="ar">→</span>
+                    <span class="mono">{{l.wanted}}</span>
+                    <span class="{{l.stCls}}">{{l.status}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div class="sechd"><span class="t">Open market</span><span class="ln"></span><span class="x mono">{{marketCount}} listings</span></div>
+              <div style="display:flex; flex-direction:column; gap:6px">
+                <sc-for list="{{market}}" as="l" hint-placeholder-count="4">
+                  <div class="mrow">
+                    <span class="mono rar"><span class="sw" style="background:{{l.color}}"></span>{{l.offered}}</span>
+                    <span class="ar">→</span>
+                    <span class="mono">{{l.wanted}}</span>
+                    <span style="font-size:11px; color:var(--txt3)">{{l.lister}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ---------- SETTINGS ---------- -->
+      <sc-if value="{{isSettings}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex; flex-direction:column; gap:22px; max-width:940px">
+
+          <div>
+            <div class="sechd"><span class="t">Opening</span><span class="ln"></span></div>
+            <div class="card">
+              <label class="tg">
+                <input type="checkbox" checked="{{cfg.buy}}" onChange="{{togBuy}}"><span class="sw2"></span>
+                <span><span class="lb">Buy packs with ink</span>
+                <span class="hp">Spends 400 ink for a full restock of 5 packs when free packs run out.</span></span>
+              </label>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" checked="{{cfg.mystery}}" onChange="{{togMystery}}"><span class="sw2"></span>
+                <span><span class="lb">Open the mystery pack</span>
+                <span class="hp">Once every 6 hours, when one is available.</span></span>
+              </label>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" checked="{{cfg.autostart}}" onChange="{{togAutostart}}"><span class="sw2"></span>
+                <span><span class="lb">Start farming when the server starts</span>
+                <span class="hp">Skips the manual Start after a restart.</span></span>
+              </label>
+              <div class="fld" style="border-top:var(--bw) solid var(--rule); padding-top:13px; margin-top:6px">
+                <span style="width:190px; color:var(--txt2)">Keep an ink reserve of</span>
+                <input type="number" defaultValue="400">
+                <span style="color:var(--txt3); font-size:11px">never spent on restocks</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Recycling</span><span class="ln"></span></div>
+            <div class="card">
+              <label class="tg">
+                <input type="checkbox" checked="{{cfg.recycle}}" onChange="{{togRecycle}}"><span class="sw2"></span>
+                <span><span class="lb">Recycle duplicates automatically</span>
+                <span class="hp">Only LR, UR, SSR and SR return ink. Everything else is kept as spares.</span></span>
+              </label>
+              <div style="border-top:var(--bw) solid var(--rule); padding-top:14px; margin-top:6px; display:flex; flex-direction:column; gap:13px">
+                <div style="display:flex; align-items:center; gap:14px">
+                  <span style="width:190px; color:var(--txt2); font-size:12.5px">When to recycle</span>
+                  <span class="seg">
+                    <button class="{{seg.recSurplus}}" onClick="{{setRecSurplus}}">On surplus</button>
+                    <button class="{{seg.recDemand}}" onClick="{{setRecDemand}}">On demand</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)">{{segHelp.recmode}}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:14px">
+                  <span style="width:190px; color:var(--txt2); font-size:12.5px">Spares to keep</span>
+                  <span class="seg">
+                    <button class="{{seg.resFixed}}" onClick="{{setResFixed}}">Fixed per rarity</button>
+                    <button class="{{seg.resMissing}}" onClick="{{setResMissing}}">Match missing</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)">{{segHelp.resmode}}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:14px">
+                  <span style="width:190px; color:var(--txt2); font-size:12.5px">Recycle first</span>
+                  <span class="seg">
+                    <button class="{{seg.prioCommon}}" onClick="{{setPrioCommon}}">Common</button>
+                    <button class="{{seg.prioRare}}" onClick="{{setPrioRare}}">Rare</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)">{{segHelp.recprio}}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Diagnostics</span><span class="ln"></span></div>
+            <div class="card" style="display:flex; flex-direction:column; gap:13px">
+              <div style="display:flex; align-items:center; gap:14px">
+                <span style="width:190px; color:var(--txt2); font-size:12.5px">Log level</span>
+                <span class="seg">
+                  <button class="{{seg.lgDebug}}" onClick="{{setLgDebug}}">Debug</button>
+                  <button class="{{seg.lgInfo}}" onClick="{{setLgInfo}}">Info</button>
+                  <button class="{{seg.lgWarn}}" onClick="{{setLgWarn}}">Warning</button>
+                  <button class="{{seg.lgError}}" onClick="{{setLgError}}">Error</button>
+                </span>
+              </div>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule); padding-top:11px">
+                <input type="checkbox" checked="{{cfg.trace}}" onChange="{{togTrace}}"><span class="sw2"></span>
+                <span><span class="lb">Trace every HTTP request</span>
+                <span class="hp">Verbose. Writes every call to wikitcg.log — useful when the API misbehaves.</span></span>
+              </label>
+              <div style="border-top:var(--bw) solid var(--rule); padding-top:13px; display:flex; align-items:center; gap:12px">
+                <button class="btn sm">Reset all settings to defaults</button>
+                <span style="font-size:11px; color:var(--txt3)">{{overrideNote}}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ---------- LOG ---------- -->
+      <sc-if value="{{isLog}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex; flex-direction:column; gap:14px">
+          <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap">
+            <span class="caps" style="margin-right:4px">Filter</span>
+            <span class="seg">
+              <button class="{{seg.fAll}}" onClick="{{setFAll}}">Everything</button>
+              <button class="{{seg.fWarn}}" onClick="{{setFWarn}}">Warnings</button>
+              <button class="{{seg.fErr}}" onClick="{{setFErr}}">Errors</button>
+            </span>
+            <div style="flex-grow:1"></div>
+            <span class="mono" style="font-size:11px; color:var(--txt3)">{{logCount}}</span>
+          </div>
+          <div class="card" style="padding:6px 16px 10px">
+            <div class="feed">
+              <sc-for list="{{fullLog}}" as="e" hint-placeholder-count="12">
+                <div class="{{e.cls}}">
+                  <span class="ts">{{e.t}}</span>
+                  <span class="ty">{{e.type}}</span>
+                  <span class="mg">{{e.msg}}</span>
+                  <span class="dl" style="color:{{e.dcol}}">{{e.delta}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </main>
+
+  <!-- ============ COOKIE SHEET ============ -->
+  <sc-if value="{{sheetCookie}}" hint-placeholder-val="{{false}}">
+    <div class="sheet mid">
+      <div class="sheetin">
+        <div style="display:flex; align-items:flex-start; gap:14px">
+          <div style="flex-grow:1">
+            <div class="sheetttl">Session cookie — {{acct.name}}</div>
+            <div style="font-size:12px; color:var(--txt2); margin-top:8px; line-height:1.5">
+              wikitcg has no refresh endpoint. Log in from your browser, open
+              <span class="mono" style="font-size:11px">DevTools → Application → Cookies</span>, copy the
+              <span class="mono" style="font-size:11px">wtcg_session</span> value and paste it below.
+              It applies immediately — no restart.
+            </div>
+          </div>
+          <button class="btn sm" onClick="{{closeSheet}}">Close</button>
+        </div>
+        <div>
+          <div class="caps" style="margin-bottom:6px">wtcg_session</div>
+          <textarea class="ta" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
+        </div>
+        <div>
+          <div class="caps" style="margin-bottom:6px">Extra cookies — optional</div>
+          <textarea class="ta" style="min-height:54px" placeholder="cf_clearance=...; other=..."></textarea>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px">
+          <button class="btn primary" onClick="{{closeSheet}}">Save and apply</button>
+          <button class="btn" onClick="{{closeSheet}}">Cancel</button>
+          <div style="flex-grow:1"></div>
+          <span style="font-size:11px; color:var(--txt3)">Stored in the OS keyring</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ SERIES SHEET ============ -->
+  <sc-if value="{{sheetSeries}}" hint-placeholder-val="{{false}}">
+    <div class="sheet">
+      <div class="sheetin">
+        <div style="display:flex; align-items:flex-start; gap:14px">
+          <div style="flex-grow:1">
+            <div class="sheetttl">{{detail.name}}</div>
+            <div style="font-size:12px; color:var(--txt2); margin-top:5px">{{detail.sub}}</div>
+          </div>
+          <button class="btn sm" onClick="{{closeSheet}}">Close</button>
+        </div>
+
+        <div class="track tall"><i style="width:{{detail.w}}; background:{{detail.color}}"></i></div>
+
+        <div>
+          <div class="caps" style="margin-bottom:8px">Owned by rarity</div>
+          <div class="chipsr">
+            <sc-for list="{{detail.rarities}}" as="r" hint-placeholder-count="7">
+              <span class="{{r.cls}}"><span class="sw" style="background:{{r.color}}"></span>{{r.rarity}} <b>{{r.owned}}</b>/{{r.total}}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div>
+          <div class="caps" style="margin-bottom:6px">{{detail.missTitle}}</div>
+          <sc-for list="{{detail.missing}}" as="m" hint-placeholder-count="9">
+            <div class="mrowx">
+              <span>{{m.title}}</span>
+              <span class="mono rar" style="font-size:11px; color:{{m.color}}"><span class="sw" style="background:{{m.color}}"></span>{{m.rarity}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="font-size:11.5px; color:var(--txt3); border-top:var(--bw) solid var(--rule); padding-top:11px; line-height:1.5">
+          {{detail.foot}}
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"theme":{"editor":"enum","default":"archive","options":["archive","console","pressroom"],"section":"Direction"},"density":{"editor":"enum","default":"comfortable","options":["comfortable","compact"],"section":"Layout"},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.state = {
+      view: 'overview',
+      running: true,
+      acctId: 'main',
+      acctMenu: false,
+      sheet: null,
+      sid: 'masterworks',
+      logf: 'all',
+      theme: null,   // null = follow the Direction tweak; the top-bar switcher overrides
+      cfg: { buy:true, recycle:true, mystery:true, market:false, fulfill:false, autostart:false,
+             recmode:'surplus', resmode:'fixed', recprio:'common_first', loglevel:'INFO', trace:false,
+             maxlist:5 }
+    };
+  }
+
+  // ---- the three visual directions: colors JS needs (CSS holds the rest) ----
+  THEMES(){
+    return {
+      archive: {
+        accent:'#2d4f7c', good:'#41663f', bad:'#8f3030', dim:'#8a8271', txt:'#1c1a15',
+        rarity:{ LR:'#7b3fa8', UR:'#b4532a', SSR:'#9a7420', SR:'#2b6c85', R:'#41663f', UC:'#6e6045', C:'#8a8271' },
+        seriesBars:'own'
+      },
+      console: {
+        accent:'#c2f04a', good:'#8fd14a', bad:'#e4674f', dim:'#5d6b6e', txt:'#ccd8da',
+        rarity:{ LR:'#e0a3ff', UR:'#ff9d6b', SSR:'#ffd166', SR:'#6fb3c9', R:'#7bbf6a', UC:'#b9a884', C:'#8d7c5c' },
+        seriesBars:'own'
+      },
+      pressroom: {
+        accent:'#d7301f', good:'#1f6b2f', bad:'#d7301f', dim:'#6f6a61', txt:'#101010',
+        rarity:{ LR:'#6a1fa8', UR:'#c2410c', SSR:'#a16207', SR:'#155e75', R:'#15803d', UC:'#57534e', C:'#78716c' },
+        seriesBars:'mono'
+      }
+    };
+  }
+
+  themeId(){
+    const t = this.state.theme || this.props.theme || 'archive';
+    return this.THEMES()[t] ? t : 'archive';
+  }
+
+  // ---- static material (real names, sizes and log strings from the running app) ----
+  D(){
+    if(this._d) return this._d;
+    this._d = {
+      accounts: [
+        { id:'main', name:'main', focus:'Series focus: auto', level:69, ink:1240, packs:5, maxPacks:5,
+          opened:2369, recycled:1831, xpPct:.62, xpNext:4855, sess:'ok', sessLabel:'Session 11 d',
+          sessTone:'good', status:'running' },
+        { id:'atelier', name:'atelier', focus:'Series focus: Masterworks', level:41, ink:5820, packs:5, maxPacks:5,
+          opened:1204, recycled:790, xpPct:.24, xpNext:9120, sess:'soon', sessLabel:'Session 31 h',
+          sessTone:'warn', status:'stopped' },
+        { id:'bestiary', name:'bestiary', focus:'Series focus: Primeval', level:27, ink:180, packs:0, maxPacks:5,
+          opened:612, recycled:243, xpPct:.81, xpNext:1340, sess:'expired', sessLabel:'Session expired',
+          sessTone:'bad', status:'error' }
+      ],
+      series: [
+        { id:'world-culture',         name:'Living Heritage',       total:168, owned:1,   pulls:1,    color:'#e74c3c' },
+        { id:'primeval',              name:'Primeval',              total:200, owned:84,  pulls:662,  color:'#e8a13c' },
+        { id:'myths-legends',         name:'Myths & Legends',       total:200, owned:100, pulls:652,  color:'#e85d3a' },
+        { id:'masterworks',           name:'Masterworks',           total:200, owned:191, pulls:4588, color:'#c4956a' },
+        { id:'architects-of-worlds',  name:'Architects of Worlds',  total:199, owned:199, pulls:629,  color:'#a78bfa' },
+        { id:'space-cosmos',          name:'Celestial Vault',       total:200, owned:200, pulls:552,  color:'#7b68ee' },
+        { id:'science-discovery',     name:'Eureka Archives',       total:200, owned:200, pulls:732,  color:'#3498db' },
+        { id:'full-throttle',         name:'Full Throttle',         total:200, owned:200, pulls:555,  color:'#e63946' },
+        { id:'ancient-civilizations', name:'Lost Empires',          total:200, owned:200, pulls:1192, color:'#d4a843' },
+        { id:'ocean-life',            name:'Ocean Life',            total:200, owned:200, pulls:1041, color:'#2b8fa8' },
+        { id:'famous-women',          name:'Trailblazers',          total:200, owned:200, pulls:792,  color:'#d4649a' },
+        { id:'natural-world',         name:'Untamed Wilds',         total:200, owned:200, pulls:236,  color:'#8bc34a' },
+        { id:'mystery',               name:'???',                   total:50,  owned:50,  pulls:90,   color:'#9e9e9e' }
+      ],
+      inkHistory: [4040,4040,3640,3640,3640,3640,3640,3640,3640,3640,3640,3240,3240,3240,2840,2840,
+                   2840,2840,2840,2840,2840,2440,2440,2440,2440,2440,2040,2040,2040,2040,2040,2040,
+                   2040,1640,1640,1640,1240,1240,1240,1240],
+      pulls: [
+        { rarity:'LR',  count:76,   nw:11  }, { rarity:'UR', count:197,  nw:21  },
+        { rarity:'SSR', count:412,  nw:34  }, { rarity:'SR', count:830,  nw:76  },
+        { rarity:'R',   count:1912, nw:85  }, { rarity:'UC', count:2795, nw:167 },
+        { rarity:'C',   count:4998, nw:252 }
+      ],
+      recycle: [
+        { rarity:'UR',  count:170, ink:42500 }, { rarity:'SSR', count:384, ink:38400 },
+        { rarity:'SR',  count:518, ink:20720 }, { rarity:'LR',  count:25,  ink:12500 },
+        { rarity:'R',   count:734, ink:0     }
+      ],
+      log: [
+        { t:'21:58:14', type:'open',     lvl:'info',  msg:'Booster opened: 0 new, 5 duplicate(s)', ink:0 },
+        { t:'21:58:02', type:'recycle',  lvl:'info',  msg:'6 duplicate(s) recycled (+1700 ink)', ink:1700 },
+        { t:'21:57:41', type:'rare',     lvl:'info',  msg:'Rare card: UR Walrus', ink:0 },
+        { t:'21:57:12', type:'buy',      lvl:'info',  msg:'Restock bought (400 ink) → 5 packs', ink:-400 },
+        { t:'21:56:58', type:'regen',    lvl:'info',  msg:'Regeneration: +5 pack(s) → 5 available.', ink:0 },
+        { t:'21:54:30', type:'market',   lvl:'info',  msg:'Marketplace: 3 active · 1 created, 0 fulfilled, 2 cancelled', ink:0 },
+        { t:'21:53:09', type:'listing',  lvl:'info',  msg:'Listing cancelled: wiki-317215 obtained in a pack', ink:0 },
+        { t:'21:51:44', type:'recycle',  lvl:'warn',  msg:'Daily recycle quota reached — recycling paused for 60 min (opening continues).', ink:0 },
+        { t:'21:49:02', type:'fulfill',  lvl:'info',  msg:'Listing fulfilled by another player: I received wiki-230361', ink:0 },
+        { t:'21:47:20', type:'sync',     lvl:'info',  msg:'Sync complete.', ink:0 },
+        { t:'21:45:03', type:'complete', lvl:'info',  msg:'Series complete: Ocean Life (200/200)', ink:0 },
+        { t:'21:44:12', type:'open',     lvl:'info',  msg:'Booster opened: 1 new, 4 duplicate(s)', ink:0 },
+        { t:'21:40:11', type:'idle',     lvl:'info',  msg:'No more packs — waiting 30min (regen/marketplace in parallel; wake up if enough ink).', ink:0 },
+        { t:'21:31:57', type:'mystery',  lvl:'info',  msg:'Mystery pack opened: 0 new, 5 duplicate(s)', ink:0 },
+        { t:'21:12:55', type:'error',    lvl:'error', msg:'Authentication rejected (wtcg_session cookie expired?) — paste a new session cookie.', ink:0 },
+        { t:'21:04:38', type:'series',   lvl:'info',  msg:'New series detected: Ocean Life — 194 missing card(s) out of 200', ink:0 }
+      ],
+      mine: [
+        { offered:'SSR · The Battle of San Romano', rarity:'SSR', wanted:'wiki-391388', status:'active' },
+        { offered:'UR · The Milkmaid (Vermeer)',    rarity:'UR',  wanted:'wiki-230361', status:'active' },
+        { offered:'SR · Iguanodon',                 rarity:'SR',  wanted:'wiki-317215', status:'cancelled' }
+      ],
+      market: [
+        { offered:'LR · Tyrannosaurus',    rarity:'LR',  wanted:'wiki-104882', lister:'kitsune' },
+        { offered:'SSR · Cronus',          rarity:'SSR', wanted:'wiki-220417', lister:'aurelia' },
+        { offered:'UR · Quetzalcoatlus',   rarity:'UR',  wanted:'wiki-338190', lister:'bramble' },
+        { offered:'SSR · Argentinosaurus', rarity:'SSR', wanted:'wiki-119043', lister:'noctis' }
+      ],
+      detail: {
+        masterworks: {
+          rarities: [ {rarity:'LR',owned:2,total:2},   {rarity:'UR',owned:5,total:6},   {rarity:'SSR',owned:10,total:11},
+                      {rarity:'SR',owned:19,total:21}, {rarity:'R',owned:31,total:32},  {rarity:'UC',owned:46,total:48},
+                      {rarity:'C',owned:78,total:80} ],
+          missing: [ {title:'The Milkmaid (Vermeer)',rarity:'UR'}, {title:'The Battle of San Romano',rarity:'SSR'},
+                     {title:'Annunciation (Leonardo)',rarity:'SR'}, {title:'The Hay Wain',rarity:'SR'},
+                     {title:'Wanderer above the Sea of Fog',rarity:'R'}, {title:'Bal du moulin de la Galette',rarity:'UC'},
+                     {title:'The Swing',rarity:'UC'}, {title:'Nighthawks',rarity:'C'}, {title:'The Gleaners',rarity:'C'} ],
+          dupes: 111
+        }
+      }
+    };
+    return this._d;
+  }
+
+  acct(){ const d = this.D(); return d.accounts.find(a => a.id === this.state.acctId) || d.accounts[0]; }
+  n(v){ return (v == null ? 0 : v).toLocaleString('en-US'); }
+  cfgSet(patch){ this.setState({ cfg: Object.assign({}, this.state.cfg, patch) }); }
+  rgba(hex, a){
+    const h = String(hex || '').replace('#', '');
+    const f = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const i = parseInt(f.slice(0, 6), 16);
+    if (isNaN(i)) return 'rgba(45,79,124,' + a + ')';
+    return 'rgba(' + ((i >> 16) & 255) + ',' + ((i >> 8) & 255) + ',' + (i & 255) + ',' + a + ')';
+  }
+
+  renderVals(){
+    const d = this.D(), st = this.state, a = this.acct();
+    const tid = this.themeId(), T = this.THEMES()[tid];
+    const RC = T.rarity, accent = T.accent;
+    const N = (v) => this.n(v);
+
+    // ---- series, sorted least-complete first (mirrors the app's own ordering) ----
+    const series = d.series.slice().sort((x, y) => {
+      const xd = x.owned >= x.total ? 1 : 0, yd = y.owned >= y.total ? 1 : 0;
+      if (xd !== yd) return xd - yd;
+      return (x.owned / x.total) - (y.owned / y.total);
+    });
+    const barCol = (s, pct) => {
+      if (T.seriesBars === 'own') return s.color;
+      return pct < 50 ? T.accent : T.txt;   // pressroom: black bars, red for the badly incomplete
+    };
+    const mkSeries = (s) => {
+      const pct = Math.round(1000 * s.owned / s.total) / 10;
+      const miss = s.total - s.owned;
+      return {
+        name: s.name, owned: N(s.owned), total: s.total, pct: pct, w: pct + '%',
+        color: barCol(s, pct), nameCol: miss === 0 ? T.dim : T.txt,
+        sub: miss === 0 ? ('Complete · ' + N(s.pulls) + ' pulls')
+                        : (N(miss) + ' missing · ' + N(s.pulls) + ' pulls'),
+        open: () => this.setState({ sheet: 'series', sid: s.id })
+      };
+    };
+    const totalCards = d.series.reduce((n, s) => n + s.total, 0);
+    const ownedCards = d.series.reduce((n, s) => n + s.owned, 0);
+    const openCount  = d.series.filter(s => s.owned < s.total).length;
+    const overallPct = Math.round(1000 * ownedCards / totalCards) / 10;
+
+    // ---- ink sparkline ----
+    const h = d.inkHistory, mn = Math.min.apply(null, h), mx = Math.max.apply(null, h), sp = (mx - mn) || 1;
+    const px = (i) => (2 + i * 296 / (h.length - 1)).toFixed(1);
+    const py = (v) => (36 - (v - mn) * 32 / sp).toFixed(1);
+    const line = h.map((v, i) => px(i) + ',' + py(v)).join(' ');
+
+    // ---- pulls / recycling ----
+    const pullTotal = d.pulls.reduce((n, p) => n + p.count, 0);
+    const pullMax = Math.max.apply(null, d.pulls.map(p => p.count));
+    const recMax = Math.max.apply(null, d.recycle.map(r => r.ink)) || 1;
+    const recInk = d.recycle.reduce((n, r) => n + r.ink, 0);
+    const recCount = d.recycle.reduce((n, r) => n + r.count, 0);
+
+    // ---- log ----
+    const filtered = d.log.filter(e => st.logf === 'all' ? true
+                                     : st.logf === 'warn' ? (e.lvl === 'warn' || e.lvl === 'error')
+                                     : e.lvl === 'error');
+    const mkLog = (e) => ({
+      t: e.t, type: e.type, msg: e.msg, cls: 'fe ' + e.lvl,
+      delta: e.ink === 0 ? '' : (e.ink > 0 ? '+' + N(e.ink) : N(e.ink)),
+      dcol: e.ink > 0 ? T.good : T.bad
+    });
+
+    // ---- run state, in plain language ----
+    const openSeries = series.filter(s => s.owned < s.total);
+    const target = openSeries.length ? openSeries[openSeries.length - 1] : null;
+    const run = st.running
+      ? { title: 'Opening packs' + (target ? ' — ' + target.name : ''),
+          sub: a.packs + ' of ' + a.maxPacks + ' packs left · recycling surplus as it goes · account “' + a.name + '”' }
+      : { title: 'Stopped',
+          sub: 'Nothing is running. ' + a.packs + ' pack(s) ready on “' + a.name + '”.' };
+
+    const expired = a.sess === 'expired', soon = a.sess === 'soon';
+
+    const accountCards = d.accounts.map(x => {
+      const cur = x.id === st.acctId;
+      return {
+        name: x.name, focus: x.focus, level: N(x.level), ink: N(x.ink),
+        packs: x.packs + ' / ' + x.maxPacks, opened: N(x.opened),
+        sessLabel: x.sessLabel, sessCls: 'chip ' + x.sessTone,
+        isCurrent: cur, notCurrent: !cur,
+        needsCookie: x.sess === 'expired' || x.sess === 'soon',
+        cookieMsg: x.sess === 'expired'
+          ? 'This account is idle until a fresh cookie is pasted.'
+          : 'Expires in about 31 hours — renew it before it stops.',
+        cls: 'acard' + (cur ? ' cur' : '') + (x.sess === 'expired' ? ' bad' : ''),
+        activate: () => this.setState({ acctId: x.id }),
+        cookie: () => this.setState({ sheet: 'cookie', acctId: x.id })
+      };
+    });
+
+    const cur = d.series.find(s => s.id === st.sid) || d.series[3];
+    const det = d.detail[cur.id] || d.detail.masterworks;
+    const detPct = Math.round(1000 * cur.owned / cur.total) / 10;
+    const detMiss = cur.total - cur.owned;
+
+    const on = (c) => c ? 'on' : '';
+
+    return {
+      accent: accent, goodCol: T.good,
+      themeClass: 't-' + tid,
+      densClass: (this.props.density === 'compact') ? 'compact' : '',
+      th: { archive: on(tid === 'archive'), console: on(tid === 'console'), pressroom: on(tid === 'pressroom') },
+      setThArchive:   () => this.setState({ theme:'archive' }),
+      setThConsole:   () => this.setState({ theme:'console' }),
+      setThPressroom: () => this.setState({ theme:'pressroom' }),
+
+      isOverview: st.view === 'overview', isCollection: st.view === 'collection',
+      isAccounts: st.view === 'accounts', isMarket: st.view === 'market',
+      isSettings: st.view === 'settings', isLog: st.view === 'log',
+      viewTitle: { overview:'Overview', collection:'Collection', accounts:'Accounts',
+                   market:'Market', settings:'Settings', log:'Activity log' }[st.view],
+      nv: { overview: on(st.view === 'overview'), collection: on(st.view === 'collection'),
+            accounts: on(st.view === 'accounts'), market: on(st.view === 'market'),
+            settings: on(st.view === 'settings'), log: on(st.view === 'log') },
+      goOverview:   () => this.setState({ view:'overview' }),
+      goCollection: () => this.setState({ view:'collection' }),
+      goAccounts:   () => this.setState({ view:'accounts' }),
+      goMarket:     () => this.setState({ view:'market' }),
+      goSettings:   () => this.setState({ view:'settings' }),
+      goLog:        () => this.setState({ view:'log' }),
+
+      counts: { open: openCount, accts: d.accounts.length,
+                mkt: d.mine.filter(l => l.status === 'active').length },
+      mineActive: d.mine.filter(l => l.status === 'active').length,
+      marketCount: d.market.length,
+
+      acct: { name: a.name, sub: a.focus.replace('Series focus: ', 'Focus: '),
+              dotCls: 'dot ' + (a.status === 'running' ? 'live' : a.status === 'error' ? 'err' : 'stop') },
+      acctMenuOpen: st.acctMenu,
+      toggleAcctMenu: () => this.setState({ acctMenu: !st.acctMenu }),
+      acctOptions: d.accounts.map(x => ({
+        name: x.name, sub: x.sessLabel,
+        dotCls: 'dot ' + (x.status === 'running' ? 'live' : x.status === 'error' ? 'err' : 'stop'),
+        pick: () => this.setState({ acctId: x.id, acctMenu: false })
+      })),
+
+      wsLabel: st.running ? 'websocket · live' : 'websocket · idle',
+      sessLabel: a.sessLabel,
+      sessChipCls: 'chip ' + a.sessTone,
+      statusLabel: st.running ? 'Running' : 'Stopped',
+      statusChipCls: 'chip ' + (st.running ? 'good' : ''),
+      runDotCls: 'dot ' + (st.running ? 'live' : 'stop'),
+      runStripCls: 'runstrip' + (st.running ? '' : ' off'),
+
+      running: st.running, stopped: !st.running,
+      toggleRun: () => this.setState({ running: !st.running }),
+      doSync: () => this.setState({ view: 'log' }),
+      run: run,
+
+      showSessionAlert: expired || soon,
+      sessAlert: { title: expired ? 'Session expired' : 'Session expires soon',
+                   body: expired
+                     ? 'wikitcg rejected the cookie. Farming is paused on this account until you paste a new one.'
+                     : 'About 31 hours left. wikitcg cannot refresh it — renew it from the browser before it lapses.' },
+
+      stats: {
+        ink: N(a.ink),
+        inkNote: '−' + N(h[0] - h[h.length - 1]) + ' over the last ' + h.length + ' samples · spending outruns recycling',
+        packs: a.packs, packsMax: a.maxPacks,
+        packsPct: Math.round(100 * a.packs / a.maxPacks) + '%',
+        packsNote: a.packs >= a.maxPacks ? 'Full — regeneration paused' : 'Next pack in 6m 20s',
+        level: a.level, xpPct: Math.round(a.xpPct * 100) + '%',
+        xpNote: N(a.xpNext) + ' xp to level ' + (a.level + 1),
+        pct: overallPct, pctW: overallPct + '%',
+        pctNote: N(ownedCards) + ' / ' + N(totalCards) + ' cards · ' + openCount + ' series still open',
+        missing: N(totalCards - ownedCards)
+      },
+      spark: { line: line, area: '2,38 ' + line + ' 298,38', fill: this.rgba(accent, .12) },
+
+      nearDone: openSeries.slice().reverse().map(mkSeries),
+      allSeries: series.map(mkSeries),
+
+      recentLog: d.log.slice(0, 7).map(mkLog),
+      fullLog: filtered.map(mkLog),
+      logCount: filtered.length + ' of ' + d.log.length + ' entries',
+
+      pullTotal: N(pullTotal),
+      pulls: d.pulls.map(p => ({
+        rarity: p.rarity, color: RC[p.rarity], count: N(p.count), new: N(p.nw),
+        w: Math.round(100 * p.count / pullMax) + '%'
+      })),
+      recycle: {
+        total: N(recInk) + ' ink · ' + N(recCount) + ' cards',
+        rows: d.recycle.map(r => ({
+          rarity: r.rarity, color: RC[r.rarity], ink: N(r.ink), count: N(r.count),
+          w: Math.round(100 * r.ink / recMax) + '%'
+        }))
+      },
+
+      accountCards: accountCards,
+
+      myListings: d.mine.map(l => ({
+        offered: l.offered, wanted: l.wanted, status: l.status, color: RC[l.rarity],
+        stCls: 'chip ' + (l.status === 'active' ? 'good' : 'bad')
+      })),
+      market: d.market.map(l => ({
+        offered: l.offered, wanted: l.wanted, lister: l.lister, color: RC[l.rarity]
+      })),
+
+      cfg: st.cfg,
+      togBuy: () => this.cfgSet({ buy: !st.cfg.buy }),
+      togRecycle: () => this.cfgSet({ recycle: !st.cfg.recycle }),
+      togMystery: () => this.cfgSet({ mystery: !st.cfg.mystery }),
+      togAutostart: () => this.cfgSet({ autostart: !st.cfg.autostart }),
+      togTrace: () => this.cfgSet({ trace: !st.cfg.trace }),
+      togMarket: () => this.cfgSet({ market: !st.cfg.market }),
+      togFulfill: () => this.cfgSet({ fulfill: !st.cfg.fulfill }),
+      setRecSurplus: () => this.cfgSet({ recmode:'surplus' }),
+      setRecDemand:  () => this.cfgSet({ recmode:'on_demand' }),
+      setResFixed:   () => this.cfgSet({ resmode:'fixed' }),
+      setResMissing: () => this.cfgSet({ resmode:'missing' }),
+      setPrioCommon: () => this.cfgSet({ recprio:'common_first' }),
+      setPrioRare:   () => this.cfgSet({ recprio:'rare_first' }),
+      setLgDebug: () => this.cfgSet({ loglevel:'DEBUG' }),   setLgInfo:  () => this.cfgSet({ loglevel:'INFO' }),
+      setLgWarn:  () => this.cfgSet({ loglevel:'WARNING' }), setLgError: () => this.cfgSet({ loglevel:'ERROR' }),
+      setFAll:  () => this.setState({ logf:'all' }),
+      setFWarn: () => this.setState({ logf:'warn' }),
+      setFErr:  () => this.setState({ logf:'error' }),
+      seg: {
+        recSurplus: on(st.cfg.recmode === 'surplus'),      recDemand:  on(st.cfg.recmode === 'on_demand'),
+        resFixed:   on(st.cfg.resmode === 'fixed'),        resMissing: on(st.cfg.resmode === 'missing'),
+        prioCommon: on(st.cfg.recprio === 'common_first'), prioRare:   on(st.cfg.recprio === 'rare_first'),
+        lgDebug: on(st.cfg.loglevel === 'DEBUG'),   lgInfo:  on(st.cfg.loglevel === 'INFO'),
+        lgWarn:  on(st.cfg.loglevel === 'WARNING'), lgError: on(st.cfg.loglevel === 'ERROR'),
+        fAll: on(st.logf === 'all'), fWarn: on(st.logf === 'warn'), fErr: on(st.logf === 'error')
+      },
+      segHelp: {
+        recmode: st.cfg.recmode === 'surplus'
+          ? 'Continuously, whenever duplicates pile up past the spares you keep.'
+          : 'Only when ink is needed for a restock.',
+        resmode: st.cfg.resmode === 'fixed'
+          ? 'A set number per rarity — 2 LR, 2 UR, 1 SSR/SR/R/UC, 0 C.'
+          : 'As many spares as you still have cards missing in that rarity.',
+        recprio: st.cfg.recprio === 'common_first'
+          ? 'Clears the low-value backlog first; rares stay as trade stock.'
+          : 'Cashes in the valuable duplicates first for ink.'
+      },
+      overrideNote: '3 settings changed from the dashboard',
+
+      sheetCookie: st.sheet === 'cookie',
+      sheetSeries: st.sheet === 'series',
+      openCookie: () => this.setState({ sheet: 'cookie' }),
+      closeSheet: () => this.setState({ sheet: null }),
+      detail: {
+        name: cur.name,
+        sub: N(cur.owned) + ' / ' + cur.total + ' owned · ' + detPct + '% · ' + N(detMiss) + ' missing',
+        w: detPct + '%', color: barCol(cur, detPct),
+        rarities: det.rarities.map(r => ({
+          rarity: r.rarity, owned: r.owned, total: r.total, color: RC[r.rarity],
+          cls: 'rchip' + (r.owned >= r.total ? ' full' : '')
+        })),
+        missTitle: detMiss > 0 ? (N(detMiss) + ' cards still missing') : 'Series complete',
+        missing: det.missing.map(m => ({ title: m.title, rarity: m.rarity, color: RC[m.rarity] })),
+        foot: N(det.dupes) + ' duplicates of this series are held in reserve. Spares above the keep-threshold '
+            + 'are recycled for ink; LR and UR duplicates are held back as marketplace stock.'
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

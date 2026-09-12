@@ -1,0 +1,23 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1080, "title": "Dashboard", "is_interactive": true },
+    { "file": "Mobile.dc.html", "x": 1560, "y": 0, "w": 390, "h": 844, "title": "Phone — Overview", "is_interactive": true }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -230,
+      "w": 640,
+      "text": "All three directions now live in the dashboard itself — switch with\nArchive / Console / Pressroom in the top bar.\n\nARCHIVE  warm paper · Newsreader + Archivo · hairline rules · 3px corners\nCONSOLE  near-black telemetry · IBM Plex Mono throughout · acid signal · square\nPRESSROOM  bone + black · Anton display · 2px rules · one red accent\n\nThe rail navigates six views. Start/Stop, the account switcher, every toggle,\nthe series rows and the cookie sheet all work. Real data throughout: level 69,\n1,240 ink, 11,220 pulls, 1,831 cards recycled for 114,120 ink."
+    },
+    {
+      "id": "phone-note",
+      "x": 1560,
+      "y": -145,
+      "w": 390,
+      "text": "Phone view, same three themes.\nArtboards share no state, so this one switches on its own.\nNo fake status bar — the real one draws on top."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
