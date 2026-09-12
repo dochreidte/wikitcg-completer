@@ -9,7 +9,6 @@ and farms several accounts in turn — while showing you every move it makes, li
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen)](#-tests)
 [![License](https://img.shields.io/badge/license-GPL%20v3-blue)](LICENSE)
 
 </div>
