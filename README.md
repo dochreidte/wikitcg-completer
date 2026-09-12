@@ -130,14 +130,6 @@ restock wakes the opener immediately instead of sitting out the timer.
 - **Nothing leaves your machine** except the calls made to wikitcg.net on your behalf. No telemetry, no cloud. (The UI does load its webfonts from Google Fonts; delete the `<link>` tags in `frontend/index.html` for a fully offline dashboard.)
 - **Nothing sensitive is committed** — databases, logs and secrets are all gitignored.
 
-## 🧪 Tests
-
-194 tests, standard library only, no network:
-
-```bash
-python -m unittest discover -s tests -t .
-```
-
 ## 📜 License
 
 [GNU GPL v3](LICENSE) — free to use, study, share and modify; derivative works must stay
