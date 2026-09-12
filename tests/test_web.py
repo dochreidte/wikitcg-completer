@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -54,6 +55,22 @@ class WebTest(unittest.TestCase):
 
     def test_index_served(self):
         self.assertEqual(self.c.get("/").status_code, 200)
+
+    def test_index_serves_the_six_view_shell(self):
+        html = self.c.get("/").text
+        self.assertIn('id="theme-switch"', html)
+        for view in ("overview", "collection", "accounts", "market", "settings", "log"):
+            self.assertIn(f'data-view="{view}"', html)
+
+    def test_every_asset_the_page_references_is_served(self):
+        refs = re.findall(r'(?:href|src)="(/assets/[^"]+)"', self.c.get("/").text)
+        self.assertTrue(refs, "index.html references no /assets/ files")
+        for path in refs:
+            self.assertEqual(self.c.get(path).status_code, 200, path)
+
+    def test_assets_cannot_escape_the_frontend_directory(self):
+        for path in ("/assets/../app/web.py", "/assets/css/../../../app/web.py"):
+            self.assertNotEqual(self.c.get(path).status_code, 200, path)
 
     def test_state_without_accounts(self):
         d = self.c.get("/api/state").json()

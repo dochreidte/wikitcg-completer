@@ -3,952 +3,366 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WikiTCG · Vault</title>
+<title>WikiTCG · Completion engine</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --bg:#0e0c09; --bg2:#16120c; --panel:#1c1710; --panel2:#241d13;
-    --line:#3a2f1e; --gold:#d4a843; --gold-dim:#8b6914; --ink:#6fb3c9;
-    --txt:#ecdfc6; --txt-dim:#9a8a6c; --good:#7bbf6a; --warn:#d8a23a; --err:#d2674f;
-    --radius:14px;
-    --r-LR:#e0a3ff; --r-UR:#ff9d6b; --r-SSR:#ffd166; --r-SR:#6fb3c9;
-    --r-R:#7bbf6a; --r-UC:#b9a884; --r-C:#7c6c4f;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
-  body{
-    font-family:"Spline Sans",sans-serif; color:var(--txt);
-    background:
-      radial-gradient(1200px 600px at 80% -10%, rgba(212,168,67,.10), transparent 60%),
-      radial-gradient(900px 500px at -10% 110%, rgba(111,179,201,.06), transparent 55%),
-      linear-gradient(180deg,var(--bg),var(--bg2));
-    min-height:100%;
-  }
-  body::before{
-    content:""; position:fixed; inset:0; pointer-events:none; opacity:.035; z-index:1;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  .wrap{position:relative; z-index:2; max-width:1180px; margin:0 auto; padding:28px 22px 60px}
-
-  header{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap;
-    border-bottom:1px solid var(--line); padding-bottom:18px}
-  .brand h1{font-family:"Fraunces",serif; font-weight:900; font-size:34px; letter-spacing:.5px;
-    margin:0; line-height:1; background:linear-gradient(180deg,#f3e4bd,var(--gold));
-    -webkit-background-clip:text; background-clip:text; color:transparent}
-  .brand .sub{color:var(--txt-dim); font-size:13px; margin-top:6px; letter-spacing:2px; text-transform:uppercase}
-  .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
-  .pill{display:inline-flex; align-items:center; gap:8px; font-family:"Spline Sans Mono",monospace;
-    font-size:12px; padding:7px 12px; border:1px solid var(--line); border-radius:999px;
-    background:var(--panel); text-transform:uppercase; letter-spacing:1px}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--txt-dim);box-shadow:0 0 0 0 rgba(0,0,0,0)}
-  .dot.on{background:var(--good); animation:pulse 2s infinite}
-  .dot.run{background:var(--gold); animation:pulse 1.1s infinite}
-  .dot.wait{background:var(--warn)} .dot.err{background:var(--err)} .dot.off{background:var(--err)}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(212,168,67,.5)}70%{box-shadow:0 0 0 7px rgba(212,168,67,0)}100%{box-shadow:0 0 0 0 rgba(212,168,67,0)}}
-  button{font-family:"Spline Sans",sans-serif; font-weight:600; font-size:13px; cursor:pointer;
-    color:var(--bg); background:linear-gradient(180deg,#f0dca8,var(--gold)); border:none;
-    padding:10px 16px; border-radius:10px; transition:transform .08s ease, filter .15s ease}
-  button:hover{filter:brightness(1.08)} button:active{transform:translateY(1px)}
-  button.ghost{background:transparent; color:var(--txt); border:1px solid var(--line)}
-  button:disabled{opacity:.4; cursor:not-allowed; filter:none}
-
-  .banner{margin:16px 0 0; padding:11px 16px; border-radius:10px; font-size:13px;
-    border:1px solid var(--line); background:var(--panel); color:var(--txt-dim); display:none}
-  .banner.show{display:block} .banner b{color:var(--warn)}
-
-  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:22px 0 14px}
-  .stat{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
-    border-radius:var(--radius); padding:16px 18px; position:relative; overflow:hidden}
-  .stat::after{content:""; position:absolute; right:-30px; top:-30px; width:90px; height:90px;
-    border-radius:50%; background:radial-gradient(circle,rgba(212,168,67,.12),transparent 70%)}
-  .stat .k{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--txt-dim)}
-  .stat .v{font-family:"Spline Sans Mono",monospace; font-size:30px; font-weight:500; margin-top:6px;
-    color:var(--gold); line-height:1.05}
-  .stat .v small{font-size:14px; color:var(--txt-dim)}
-  .stat.ink .v{color:var(--ink)}
-  .stat .note{font-family:"Spline Sans Mono",monospace; font-size:11px; color:var(--txt-dim); margin-top:7px;
-    min-height:13px}
-  .stat .note b{color:var(--gold)}
-  .xpbar{height:5px; border-radius:5px; background:#000; margin-top:9px; overflow:hidden; border:1px solid rgba(0,0,0,.4)}
-  .xpbar > i{display:block; height:100%; background:linear-gradient(90deg,var(--gold-dim),var(--gold)); transition:width .5s ease}
-
-  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
-    border-radius:var(--radius); padding:14px 18px; margin-bottom:20px}
-  .panel-row{display:flex; align-items:center; gap:22px 26px; flex-wrap:wrap}
-  .panel .lab{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--txt-dim); margin-right:4px}
-  .toggle{display:inline-flex; align-items:center; gap:9px; cursor:pointer; user-select:none; font-size:13px}
-  .toggle input{display:none}
-  .track{width:38px; height:21px; border-radius:999px; background:#0c0a07; border:1px solid var(--line);
-    position:relative; transition:background .15s ease, border-color .15s ease; flex:0 0 auto}
-  .track::after{content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
-    background:var(--txt-dim); transition:transform .16s ease, background .16s ease}
-  .toggle input:checked + .track{background:rgba(123,191,106,.25); border-color:var(--good)}
-  .toggle input:checked + .track::after{transform:translateX(17px); background:var(--good)}
-  .seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden}
-  .seg button{background:transparent; color:var(--txt-dim); border:none; padding:7px 13px; border-radius:0; font-size:12px}
-  .seg button.active{background:var(--gold); color:var(--bg)}
-  .num{display:inline-flex; align-items:center; gap:8px; font-size:13px}
-  .num input, .num select{width:74px; background:#0c0a07; border:1px solid var(--line); color:var(--txt); border-radius:8px;
-    padding:6px 9px; font-family:"Spline Sans Mono",monospace; font-size:13px}
-  .num input:focus, .num select:focus{outline:none; border-color:var(--gold-dim)}
-
-  .layout{display:grid; grid-template-columns:1.55fr 1fr; gap:20px; align-items:start}
-  @media(max-width:900px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
-  h2{font-family:"Fraunces",serif; font-weight:600; font-size:19px; margin:0 0 14px;
-    display:flex; align-items:center; gap:10px}
-  h2 .count{font-family:"Spline Sans Mono",monospace; font-size:12px; color:var(--txt-dim)}
-
-  .series{display:flex; flex-direction:column; gap:10px}
-  .srow{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
-    border-radius:12px; padding:13px 15px}
-  .srow.done{opacity:.6}
-  .stop{display:flex; justify-content:space-between; align-items:baseline; gap:12px}
-  .sname{font-weight:600}
-  .smeta{font-family:"Spline Sans Mono",monospace; font-size:12px; color:var(--txt-dim)}
-  .smeta b{color:var(--gold)}
-  .bar{height:8px; border-radius:6px; background:#000; margin-top:10px; overflow:hidden;
-    border:1px solid rgba(0,0,0,.4)}
-  .bar > i{display:block; height:100%; border-radius:6px; transition:width .5s ease;
-    background:linear-gradient(90deg,var(--accent,#8b6914),var(--accent2,#d4a843))}
-  .miss{font-size:11px; color:var(--txt-dim); margin-top:6px}
-  .miss b{color:var(--txt)}
-
-  .log{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
-    border-radius:var(--radius); padding:16px; height:560px; display:flex; flex-direction:column}
-  .feed{overflow-y:auto; flex:1; margin:-4px -6px 0; padding:0 6px}
-  .feed::-webkit-scrollbar{width:8px} .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
-  .entry{display:grid; grid-template-columns:64px 1fr; gap:10px; padding:8px 0;
-    border-bottom:1px dashed rgba(58,47,30,.6); font-size:13px; animation:fade .3s ease}
-  @keyframes fade{from{opacity:0;transform:translateY(-3px)}to{opacity:1}}
-  .entry time{font-family:"Spline Sans Mono",monospace; font-size:11px; color:var(--txt-dim)}
-  .entry .msg{color:var(--txt)}
-  .entry .tag{font-family:"Spline Sans Mono",monospace; font-size:10px; text-transform:uppercase;
-    letter-spacing:1px; color:var(--gold-dim)}
-  .entry.warn .msg{color:var(--warn)} .entry.error .msg{color:var(--err)}
-  .ink-plus{color:var(--ink); font-family:"Spline Sans Mono",monospace; font-size:12px}
-  .empty{color:var(--txt-dim); font-size:13px; text-align:center; margin-top:30px}
-  footer{margin-top:30px; color:var(--txt-dim); font-size:11px; text-align:center; letter-spacing:1px}
-
-  .grid3{display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:20px; margin-top:24px; align-items:start}
-  @media(max-width:900px){.grid3{grid-template-columns:1fr}}
-  .card{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
-    border-radius:var(--radius); padding:16px 18px}
-  .card h3{font-family:"Fraunces",serif; font-weight:600; font-size:16px; margin:0 0 4px}
-  .card .csub{color:var(--txt-dim); font-size:12px; margin-bottom:12px}
-  .spark{width:100%; height:90px; display:block}
-  .rrow{display:grid; grid-template-columns:34px 1fr 64px; gap:9px; align-items:center; margin:7px 0; font-size:12px}
-  .rrow .rk{font-family:"Spline Sans Mono",monospace; color:var(--txt-dim)}
-  .rrow .rt{height:9px; border-radius:5px; background:#000; overflow:hidden; border:1px solid rgba(0,0,0,.4)}
-  .rrow .rt > i{display:block; height:100%; border-radius:5px}
-  .rrow .rv{font-family:"Spline Sans Mono",monospace; text-align:right; color:var(--txt-dim)}
-  .bigink{font-family:"Spline Sans Mono",monospace; font-size:34px; color:var(--ink); line-height:1}
-  .bigink small{font-size:13px; color:var(--txt-dim)}
-
-  .mkt{margin-top:24px}
-  .mkt-head{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px}
-  .mkt-head h2{margin:0}
-  .mkt-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:10px}
-  @media(max-width:900px){.mkt-grid{grid-template-columns:1fr}}
-  .mkt-list{max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-top:6px}
-  .mkt-list::-webkit-scrollbar{width:8px} .mkt-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
-  .mkt-row{display:grid; grid-template-columns:1fr 16px 1fr auto; align-items:center; gap:8px; font-size:12px;
-    padding:7px 10px; border:1px solid var(--line); border-radius:9px; background:#0c0a07}
-  .mkt-row .mono{font-family:"Spline Sans Mono",monospace}
-  .mkt-arrow{color:var(--gold); text-align:center}
-  .mkt-tag{font-size:10px; font-family:"Spline Sans Mono",monospace; text-transform:uppercase; letter-spacing:.5px}
-
-  .srow{cursor:pointer; transition:border-color .15s ease, transform .06s ease}
-  .srow:hover{border-color:var(--gold-dim)}
-  .srow:active{transform:scale(.997)}
-  .overlay{position:fixed; inset:0; z-index:50; background:rgba(6,5,3,.74); padding:24px;
-    display:none; align-items:center; justify-content:center; backdrop-filter:blur(3px)}
-  .overlay.show{display:flex}
-  .modal{width:min(640px,94vw); max-height:86vh; overflow:auto; padding:22px 24px;
-    background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
-    border-radius:16px; box-shadow:0 24px 70px rgba(0,0,0,.55)}
-  .modal h3{font-family:"Fraunces",serif; font-size:24px; margin:0 0 2px}
-  .modal .sub2{color:var(--txt-dim); font-size:13px; margin-bottom:16px}
-  .modal .close{float:right; background:transparent; border:1px solid var(--line); color:var(--txt);
-    padding:5px 10px; border-radius:8px; cursor:pointer}
-  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 18px}
-  .chip{font-family:"Spline Sans Mono",monospace; font-size:13px; padding:6px 11px; border-radius:999px;
-    border:1px solid var(--line); background:#0c0a07}
-  .chip .r{color:var(--txt-dim); margin-right:7px} .chip b{color:var(--gold)}
-  .chip.full b{color:var(--good)} .chip.full{border-color:rgba(123,191,106,.4)}
-  .misslist{border-top:1px solid var(--line); padding-top:12px}
-  .missrow{display:flex; justify-content:space-between; gap:10px; padding:6px 0; font-size:13px;
-    border-bottom:1px dashed rgba(58,47,30,.5)}
-  .missrow .rr{font-family:"Spline Sans Mono",monospace; font-size:11px; color:var(--gold-dim)}
-  .modal .loading{color:var(--txt-dim); font-size:13px}
-  .ta{width:100%; min-height:70px; resize:vertical; background:#0c0a07; border:1px solid var(--line);
-    color:var(--txt); border-radius:9px; padding:9px 11px; font-family:"Spline Sans Mono",monospace;
-    font-size:12px; margin:6px 0 12px; word-break:break-all}
-  .ta:focus{outline:none; border-color:var(--gold-dim)}
-  .pill.click{cursor:pointer} .pill.click:hover{border-color:var(--gold-dim)}
-  .toast{position:fixed; right:18px; bottom:18px; z-index:60; background:var(--panel2); color:var(--txt);
-    border:1px solid var(--good); border-radius:10px; padding:10px 15px; font-size:13px; opacity:0;
-    transform:translateY(8px); transition:opacity .2s, transform .2s; pointer-events:none}
-  .toast.show{opacity:1; transform:translateY(0)}
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Archivo:wght@400;500;600;700&family=Anton&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/theme.css">
+<link rel="stylesheet" href="/assets/css/app.css">
 </head>
-<body>
-<div class="wrap">
-  <header>
-    <div class="brand">
-      <h1>The Vault</h1>
-      <div class="sub">WikiTCG · completion engine</div>
-      <div id="current-account" style="font-size:13px;color:var(--txt-dim);margin-top:8px;font-family:Spline Sans Mono,monospace"></div>
+<body class="t-archive">
+
+<div class="shell">
+  <!-- ============ RAIL ============ -->
+  <aside class="rail">
+    <div class="mark">
+      <div class="wm">WikiTCG</div>
+      <div class="wms">Completion engine</div>
     </div>
-    <div class="controls">
-      <span class="pill"><span id="ws-dot" class="dot off"></span><span id="ws-txt">offline</span></span>
-      <span class="pill"><span id="st-dot" class="dot"></span><span id="st-txt">idle</span></span>
-      <span class="pill click" id="sess-pill" title="Session — click to update the cookie"><span id="sess-dot" class="dot"></span><span id="sess-txt">session</span></span>
-      <button id="btn-start">▶ Start</button>
-      <button id="btn-stop" class="ghost">■ Stop</button>
-      <button id="btn-next" class="ghost" style="display:none">↻ Next</button>
-      <button id="btn-sync" class="ghost">⟳ Sync</button>
-    </div>
-  </header>
 
-  <div id="banner" class="banner"></div>
-
-  <section id="vault-warn" class="banner" style="color:var(--warn);border-color:var(--warn)"></section>
-
-  <section class="stats">
-    <div class="stat ink"><div class="k">Ink</div><div class="v" id="s-ink">—</div>
-      <div class="note" id="s-ink-note"></div></div>
-    <div class="stat"><div class="k">Packs</div>
-      <div class="v" id="s-packs">—<small id="s-packs-max"></small></div>
-      <div class="note" id="s-regen"></div></div>
-    <div class="stat"><div class="k">Level</div><div class="v" id="s-level">—</div>
-      <div class="xpbar"><i id="s-xpbar" style="width:0%"></i></div>
-      <div class="note" id="s-xp"></div></div>
-    <div class="stat"><div class="k">Streak</div><div class="v" id="s-streak">—</div>
-      <div class="note" id="s-streak-note"></div></div>
-  </section>
-
-  <section class="panel" id="accounts-section">
-    <h2 style="margin:0 0 14px">Accounts</h2>
-    <div id="accounts-container">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead style="border-bottom:1px solid var(--line)">
-          <tr style="height:32px">
-            <th style="text-align:left;color:var(--txt-dim);font-weight:400">Name</th>
-            <th style="text-align:left;color:var(--txt-dim);font-weight:400">Series</th>
-            <th style="text-align:left;color:var(--txt-dim);font-weight:400">Status</th>
-            <th style="text-align:right;color:var(--txt-dim);font-weight:400;width:60px">Level</th>
-            <th style="text-align:right;color:var(--txt-dim);font-weight:400;width:60px">Ink</th>
-            <th style="text-align:right;color:var(--txt-dim);font-weight:400;width:60px">Packs</th>
-            <th style="text-align:right;color:var(--txt-dim);font-weight:400;width:70px">Opened</th>
-            <th style="text-align:right;color:var(--txt-dim);font-weight:400;width:80px">Recycled</th>
-            <th style="text-align:left;color:var(--txt-dim);font-weight:400;width:80px">Session</th>
-            <th style="text-align:left;color:var(--txt-dim);font-weight:400;width:160px">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="accounts-list"></tbody>
-      </table>
-    </div>
-    <div id="accounts-empty" style="color:var(--txt-dim);padding:20px;text-align:center">Add an account to start.</div>
-    <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--line)">
-      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end">
-        <span class="num"><span class="lab">Name</span><input type="text" id="new-acct-name" placeholder="Account name" style="width:150px"></span>
-        <span class="num"><span class="lab">Series</span>
-          <select id="new-acct-series" style="width:170px"><option value="">auto</option></select>
-        </span>
-        <button id="new-acct-btn">Add account</button>
+    <div class="acctbox">
+      <div class="hd" id="acct-head">
+        <span class="dot" id="acct-dot"></span>
+        <div style="flex-grow:1; min-width:0">
+          <div class="nm" id="acct-name">—</div>
+          <div class="sb" id="acct-focus"></div>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--txt3)"><path d="M6 9l6 6 6-6"/></svg>
       </div>
-      <div id="acct-error" style="color:var(--err);font-size:12px;display:none"></div>
+      <div id="acct-menu" hidden></div>
     </div>
-  </section>
 
-  <section class="panel">
-    <div class="panel-row">
-      <span class="lab" id="cfg-label" title="">Settings</span>
-      <label class="toggle"><input type="checkbox" id="c-buy"><span class="track"></span>Buy packs with ink</label>
-      <label class="toggle"><input type="checkbox" id="c-recycle"><span class="track"></span>Auto recycle</label>
-      <label class="toggle"><input type="checkbox" id="c-mystery"><span class="track"></span>Mystery pack (~6h)</label>
-      <label class="toggle"><input type="checkbox" id="c-mkt"><span class="track"></span>Auto-listings</label>
-      <button class="ghost" id="btn-adv-toggle" style="font-size:12px;padding:7px 12px">Advanced ▼</button>
+    <div class="nav">
+      <button class="navitem on" data-view="overview">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z"/></svg>
+        Overview
+      </button>
+      <button class="navitem" data-view="collection">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7l8-3 8 3-8 3zM4 12l8 3 8-3M4 17l8 3 8-3"/></svg>
+        Collection <span class="ct" id="nav-open"></span>
+      </button>
+      <button class="navitem" data-view="accounts">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 19v-1a4 4 0 00-4-4H7a4 4 0 00-4 4v1M9.5 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM21 19v-1a4 4 0 00-3-3.9M16 3.6a4 4 0 010 7.8"/></svg>
+        Accounts <span class="ct" id="nav-accts"></span>
+      </button>
+      <button class="navitem" data-view="market">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>
+        Market <span class="ct" id="nav-mkt"></span>
+      </button>
+      <button class="navitem" data-view="settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M4 12h6M14 12h6"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/><circle cx="12" cy="12" r="2"/></svg>
+        Settings
+      </button>
+      <button class="navitem" data-view="log">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 6h14M5 10h14M5 14h9M5 18h9"/></svg>
+        Log
+      </button>
     </div>
-    <div id="adv-panel" hidden style="margin-top:16px">
-      <div class="panel-row">
-        <span class="lab">Advanced</span>
-        <span class="num"><span class="lab">Ink reserve</span>
-          <input type="number" id="c-reserve" min="0" step="50"></span>
-        <span class="num"><span class="lab">Recycling</span>
-          <span class="seg" id="c-recmode">
-            <button data-v="surplus">Surplus</button><button data-v="on_demand">On demand</button>
-          </span></span>
-        <span class="num"><span class="lab">Reserve</span>
-          <span class="seg" id="c-resmode" title="Duplicates kept: Fixed = keep_spares; Missing = as many as missing cards per rarity">
-            <button data-v="fixed">Fixed</button><button data-v="missing">Missing</button>
-          </span></span>
-        <span class="num"><span class="lab">Recycle priority</span>
-          <span class="seg" id="c-recprio">
-            <button data-v="common_first">Common first</button><button data-v="rare_first">Rare first</button>
-          </span></span>
-        <label class="toggle"><input type="checkbox" id="c-autostart"><span class="track"></span>Auto start</label>
-        <label class="toggle"><input type="checkbox" id="c-fulfill"><span class="track"></span>Fulfill offers</label>
-        <span class="num"><span class="lab">Max listings</span><input type="number" id="c-maxlist" min="1" max="20" step="1" style="width:56px"></span>
-        <span class="num"><span class="lab" title="Only target series missing ≤ N cards (0 = all)">Focus ≤</span><input type="number" id="c-near" min="0" max="200" step="1" style="width:56px"></span>
-        <span class="num"><span class="lab">Logs</span>
-          <span class="seg" id="c-loglevel">
-            <button data-v="DEBUG">DEBUG</button><button data-v="INFO">INFO</button><button data-v="WARNING">WARN</button><button data-v="ERROR">ERR</button>
-          </span></span>
-        <label class="toggle"><input type="checkbox" id="c-logreq"><span class="track"></span>Trace requests</label>
-        <button class="ghost" id="c-reset" style="font-size:12px; padding:7px 12px">↺ Reset</button>
-      </div>
-    </div>
-  </section>
 
-  <div class="layout">
-    <section>
-      <h2>Series progress <span class="count" id="series-count"></span></h2>
-      <div class="series" id="series"></div>
-    </section>
-    <section>
-      <h2>Live log</h2>
-      <div class="log"><div class="feed" id="feed"><div class="empty">Waiting for activity…</div></div></div>
-    </section>
-  </div>
+    <div class="railfoot">
+      <span id="host-label">127.0.0.1:8765</span><br>
+      <span class="mono" id="ws-txt">connecting…</span>
+    </div>
+  </aside>
 
-  <section class="grid3">
-    <div class="card">
-      <h3>Ink over time</h3>
-      <div class="csub" id="ink-trend">—</div>
-      <svg class="spark" id="spark" viewBox="0 0 320 90" preserveAspectRatio="none"></svg>
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb" id="crumb">Overview</div>
+      <div style="flex-grow:1"></div>
+      <span class="seg tiny" id="theme-switch" title="Visual direction">
+        <button data-theme="archive" class="on">Archive</button>
+        <button data-theme="console">Console</button>
+        <button data-theme="pressroom">Pressroom</button>
+      </span>
+      <span class="chip click" id="sess-chip" title="Session — click to paste a new cookie">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+        <span id="sess-txt">session</span>
+      </span>
+      <span class="chip" id="status-chip"><span class="dot" id="st-dot"></span><span id="st-txt">idle</span></span>
     </div>
-    <div class="card">
-      <h3>Pulls by rarity</h3>
-      <div class="csub" id="pull-sub">—</div>
-      <div id="pull-bars"></div>
-    </div>
-    <div class="card">
-      <h3>Recycling</h3>
-      <div class="csub">Total ink recovered</div>
-      <div class="bigink"><span id="rec-ink">0</span> <small>ink · <span id="rec-count">0</span> card(s)</small></div>
-      <div id="rec-bars" style="margin-top:12px"></div>
-    </div>
-  </section>
 
-  <section class="panel mkt">
-    <div class="mkt-head">
-      <h2>Marketplace <span class="count" id="mkt-status">—</span></h2>
-      <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
-        <button class="ghost" id="mkt-refresh">⟳ Refresh</button>
-      </div>
-    </div>
-    <div class="csub" style="color:var(--txt-dim);font-size:12px">
-      ⚠️ Trades with <b>real players</b> (commits your cards). The <code>create</code>/<code>cancel</code>
-      contract is verified live. "Fulfill offers" gives one of your cards for a missing one — <b>irreversible</b>.
-    </div>
-    <div class="mkt-grid">
-      <div><div class="csub">My listings</div><div id="mkt-mine" class="mkt-list"><div class="csub">—</div></div></div>
-      <div><div class="csub">Market — active listings</div><div id="mkt-market" class="mkt-list"><div class="csub">—</div></div></div>
-    </div>
-  </section>
+    <div class="body">
+      <div class="alertband hide" id="banner"></div>
+      <div class="alertband hide" id="vault-warn"></div>
 
-  <div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
-    <div class="modal" id="modal"></div>
-  </div>
+      <!-- ---------- OVERVIEW ---------- -->
+      <section class="view on" data-view="overview">
+        <div class="runstrip" id="runstrip">
+          <div style="flex-grow:1; min-width:0">
+            <div class="runtitle" id="run-title">Loading…</div>
+            <div class="runsub" id="run-sub"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:9px">
+            <button class="btn" id="btn-sync">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/></svg>
+              Sync
+            </button>
+            <button class="btn" id="btn-next" hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              Next account
+            </button>
+            <button class="btn primary" id="btn-start">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg>
+              Start
+            </button>
+            <button class="btn danger" id="btn-stop">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+              Stop
+            </button>
+          </div>
+        </div>
 
-  <footer>wikitcg-completer · real-time dashboard (WebSocket + 5 s refresh)</footer>
+        <div class="stats">
+          <div class="card stat">
+            <div class="k">Ink</div>
+            <div class="v" id="s-ink" style="color:var(--accent)">—</div>
+            <svg id="spark" viewBox="0 0 300 40" preserveAspectRatio="none" style="width:100%; height:38px; display:block; margin-top:8px"></svg>
+            <div class="n" id="s-ink-note"></div>
+          </div>
+          <div class="card stat">
+            <div class="k">Packs</div>
+            <div class="v"><span id="s-packs">—</span><span class="u" id="s-packs-max"></span></div>
+            <div class="track" style="margin-top:11px"><i id="s-packbar" style="width:0%; background:var(--accent)"></i></div>
+            <div class="n" id="s-regen"></div>
+          </div>
+          <div class="card stat">
+            <div class="k">Level</div>
+            <div class="v" id="s-level">—</div>
+            <div class="track" style="margin-top:11px"><i id="s-xpbar" style="width:0%; background:var(--accent)"></i></div>
+            <div class="n" id="s-xp"></div>
+          </div>
+          <div class="card stat">
+            <div class="k">Collection</div>
+            <div class="v"><span id="s-pct">—</span><span class="u">%</span></div>
+            <div class="track" style="margin-top:11px"><i id="s-pctbar" style="width:0%; background:var(--good)"></i></div>
+            <div class="n" id="s-pct-note"></div>
+          </div>
+        </div>
+
+        <div class="two">
+          <div>
+            <div class="sechd">
+              <span class="t">Closest to completion</span><span class="ln"></span>
+              <button class="btn link" data-goto="collection">All series</button>
+            </div>
+            <div class="card" style="padding:6px 16px 10px"><div id="near-list"></div></div>
+          </div>
+          <div>
+            <div class="sechd">
+              <span class="t">Recent activity</span><span class="ln"></span>
+              <button class="btn link" data-goto="log">Full log</button>
+            </div>
+            <div class="card" style="padding:6px 16px 10px"><div class="feed" id="recent-feed"></div></div>
+          </div>
+        </div>
+
+        <div class="half">
+          <div>
+            <div class="sechd"><span class="t">Pulls by rarity</span><span class="ln"></span><span class="x mono" id="pull-sub"></span></div>
+            <div class="card"><div id="pull-bars"></div></div>
+          </div>
+          <div>
+            <div class="sechd"><span class="t">Ink recovered by recycling</span><span class="ln"></span><span class="x mono" id="rec-sub"></span></div>
+            <div class="card">
+              <div id="rec-bars"></div>
+              <div id="rec-fails" style="font-size:11px; color:var(--warn); margin-top:10px"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- COLLECTION ---------- -->
+      <section class="view" data-view="collection">
+        <div class="card" style="display:flex; align-items:center; gap:26px; flex-wrap:wrap">
+          <div>
+            <div class="caps">Overall</div>
+            <div class="stat"><div class="v" style="margin-top:5px"><span id="c-pct">—</span><span class="u">%</span></div></div>
+          </div>
+          <div style="flex-grow:1; min-width:200px">
+            <div class="track tall"><i id="c-pctbar" style="width:0%; background:var(--good)"></i></div>
+            <div style="font-size:11.5px; color:var(--txt3); margin-top:8px" id="c-note"></div>
+          </div>
+          <div style="text-align:right">
+            <div class="caps">Cards still missing</div>
+            <div class="stat"><div class="v" style="margin-top:5px; color:var(--bad)" id="c-missing">—</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="sechd"><span class="t">Series</span><span class="ln"></span>
+            <span class="x">Least complete first — click a row for the missing list</span></div>
+          <div class="card" style="padding:6px 16px 10px"><div id="series-list"></div></div>
+        </div>
+      </section>
+
+      <!-- ---------- ACCOUNTS ---------- -->
+      <section class="view" data-view="accounts">
+        <div class="alertband" style="border-left-color:var(--txt3)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--txt2)"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></svg>
+          <div style="font-size:11.5px; color:var(--txt2); line-height:1.45; flex-grow:1">
+            The farm runs <b>one account at a time</b> and rotates when an account runs out of packs.
+            wikitcg exposes no refresh endpoint, so an expired account stays idle until you paste a fresh cookie.
+          </div>
+        </div>
+        <div class="acards" id="accounts-list"></div>
+        <div id="accounts-empty" class="empty" hidden>No accounts yet — add one below.</div>
+        <div>
+          <div class="sechd"><span class="t">Add an account</span><span class="ln"></span></div>
+          <div class="card" style="display:flex; gap:11px; align-items:center; flex-wrap:wrap">
+            <input type="text" id="new-acct-name" placeholder="Account name" style="width:190px">
+            <select id="new-acct-series" style="width:200px"><option value="">Series focus: auto</option></select>
+            <button class="btn primary" id="new-acct-btn">Add account</button>
+            <span id="acct-error" style="color:var(--bad); font-size:12px"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- MARKET ---------- -->
+      <section class="view" data-view="market">
+        <div class="warnband">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:0 0 auto; color:var(--bad)"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0zM12 9v4M12 17v.5"/></svg>
+          <div style="flex-grow:1">
+            <div class="wt">These are trades with real players, and they are irreversible</div>
+            <div class="wb">Publishing a listing commits one of your cards. Fulfilling someone else's offer gives
+              a card away immediately in exchange for one you are missing. Nothing here can be undone from this dashboard.</div>
+          </div>
+        </div>
+
+        <div class="half">
+          <div class="card">
+            <label class="tg dgr">
+              <input type="checkbox" id="c-mkt"><span class="sw2"></span>
+              <span><span class="lb">Publish listings automatically</span>
+              <span class="hp">Offers surplus duplicates for cards you are missing, up to the limit below.</span></span>
+            </label>
+            <label class="tg dgr" style="border-top:var(--bw) solid var(--rule)">
+              <input type="checkbox" id="c-fulfill"><span class="sw2"></span>
+              <span><span class="lb">Fulfill other players' offers</span>
+              <span class="hp">Gives one of your cards for a missing one, without asking each time.</span></span>
+            </label>
+          </div>
+          <div class="card" style="display:flex; flex-direction:column; gap:13px; justify-content:center">
+            <div class="fld"><span class="fl">Max live listings</span>
+              <input type="number" id="c-maxlist" min="1" max="20" step="1"></div>
+            <div class="fld"><span class="fl">Only series missing ≤</span>
+              <input type="number" id="c-near" min="0" max="200" step="1">
+              <span style="color:var(--txt3); font-size:11px">0 = every series</span></div>
+            <div class="fld"><span class="fl">Status</span><span class="mono" id="mkt-status" style="font-size:11.5px; color:var(--txt3)">—</span></div>
+          </div>
+        </div>
+
+        <div class="half">
+          <div>
+            <div class="sechd"><span class="t">My listings</span><span class="ln"></span>
+              <button class="btn link" id="mkt-refresh">Refresh</button></div>
+            <div class="mlist" id="mkt-mine"></div>
+          </div>
+          <div>
+            <div class="sechd"><span class="t">Open market</span><span class="ln"></span></div>
+            <div class="mlist" id="mkt-market"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- SETTINGS ---------- -->
+      <section class="view" data-view="settings">
+        <div style="display:flex; flex-direction:column; gap:22px; max-width:960px">
+          <div>
+            <div class="sechd"><span class="t">Opening</span><span class="ln"></span></div>
+            <div class="card">
+              <label class="tg"><input type="checkbox" id="c-buy"><span class="sw2"></span>
+                <span><span class="lb">Buy packs with ink</span>
+                <span class="hp">Spends ink on a full restock when free packs run out.</span></span></label>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" id="c-mystery"><span class="sw2"></span>
+                <span><span class="lb">Open the mystery pack</span>
+                <span class="hp">Roughly every 6 hours, when one is available.</span></span></label>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule)">
+                <input type="checkbox" id="c-autostart"><span class="sw2"></span>
+                <span><span class="lb">Start farming when the server starts</span>
+                <span class="hp">Skips the manual Start after a restart.</span></span></label>
+              <div class="fld" style="border-top:var(--bw) solid var(--rule); padding-top:14px; margin-top:6px">
+                <span class="fl">Keep an ink reserve of</span>
+                <input type="number" id="c-reserve" min="0" step="50">
+                <span style="color:var(--txt3); font-size:11px">never spent on restocks</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Recycling</span><span class="ln"></span></div>
+            <div class="card">
+              <label class="tg"><input type="checkbox" id="c-recycle"><span class="sw2"></span>
+                <span><span class="lb">Recycle duplicates automatically</span>
+                <span class="hp">Only LR, UR, SSR and SR return ink. Everything else is kept as spares.</span></span></label>
+              <div style="border-top:var(--bw) solid var(--rule); padding-top:14px; margin-top:6px; display:flex; flex-direction:column; gap:14px">
+                <div class="fld"><span class="fl">When to recycle</span>
+                  <span class="seg" id="c-recmode">
+                    <button data-v="surplus">On surplus</button><button data-v="on_demand">On demand</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)" id="h-recmode"></span>
+                </div>
+                <div class="fld"><span class="fl">Spares to keep</span>
+                  <span class="seg" id="c-resmode">
+                    <button data-v="fixed">Fixed per rarity</button><button data-v="missing">Match missing</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)" id="h-resmode"></span>
+                </div>
+                <div class="fld"><span class="fl">Recycle first</span>
+                  <span class="seg" id="c-recprio">
+                    <button data-v="common_first">Common</button><button data-v="rare_first">Rare</button>
+                  </span>
+                  <span style="font-size:11px; color:var(--txt3)" id="h-recprio"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechd"><span class="t">Diagnostics</span><span class="ln"></span></div>
+            <div class="card" style="display:flex; flex-direction:column; gap:14px">
+              <div class="fld"><span class="fl">Log level</span>
+                <span class="seg" id="c-loglevel">
+                  <button data-v="DEBUG">Debug</button><button data-v="INFO">Info</button>
+                  <button data-v="WARNING">Warning</button><button data-v="ERROR">Error</button>
+                </span>
+              </div>
+              <label class="tg" style="border-top:var(--bw) solid var(--rule); padding-top:12px">
+                <input type="checkbox" id="c-logreq"><span class="sw2"></span>
+                <span><span class="lb">Trace every HTTP request</span>
+                <span class="hp">Verbose — writes every call to wikitcg.log.</span></span></label>
+              <div style="border-top:var(--bw) solid var(--rule); padding-top:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+                <button class="btn sm" id="c-reset">Reset all settings to defaults</button>
+                <span style="font-size:11px; color:var(--txt3)" id="cfg-over"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- LOG ---------- -->
+      <section class="view" data-view="log">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+          <span class="caps">Filter</span>
+          <span class="seg" id="log-filter">
+            <button data-v="all" class="on">Everything</button>
+            <button data-v="warn">Warnings</button>
+            <button data-v="error">Errors</button>
+          </span>
+          <div style="flex-grow:1"></div>
+          <span class="mono" style="font-size:11px; color:var(--txt3)" id="log-count"></span>
+        </div>
+        <div class="card" style="padding:6px 16px 10px"><div class="feed" id="full-feed"></div></div>
+      </section>
+
+    </div>
+  </main>
 </div>
+
+<div class="overlay side" id="ov-series"><div class="sheet" id="series-sheet"></div></div>
+<div class="overlay mid" id="ov-modal"><div class="sheet" id="modal-sheet"></div></div>
 <div class="toast" id="toast"></div>
 
-<script>
-const $ = s => document.querySelector(s);
-const fmt = n => (n || 0).toLocaleString('en-US');
-const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-const RARITIES = ['LR','UR','SSR','SR','R','UC','C'];
-const rcol = r => getComputedStyle(document.documentElement).getPropertyValue('--r-'+r).trim() || '#d4a843';
-const isValidColor = c => /^#[0-9a-f]{3,8}$/i.test(c || '');
-let feedEmpty = true;
-let regenAt = null, packsNow = 0, packsMax = 0;
-let currentAccountId = null;
-let accounts = [], accountsHtml = '', seriesMenu = [], seriesKey = '';
-
-const STATUS = {
-  idle:['on','idle'], syncing:['run','syncing'], running:['run','running'],
-  waiting:['wait','awaiting regen'], stopped:['on','stopped'], error:['err','error']
-};
-
-function toast(msg){
-  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 1800);
-}
-
-function setStatus(s){
-  const [cls,label] = STATUS[s] || ['on', s];
-  $('#st-dot').className = 'dot ' + cls;
-  $('#st-txt').textContent = label;
-  $('#btn-start').disabled = (s === 'running' || s === 'syncing');
-  $('#btn-stop').disabled  = !(s === 'running' || s === 'waiting' || s === 'syncing');
-}
-
-function setResources(r){
-  if(!r) return;
-  $('#s-ink').textContent   = fmt(r.ink);
-  packsNow = r.total_available || r.free_packs || 0;
-  packsMax = r.max_free_packs || 0;
-  $('#s-packs').firstChild.textContent = fmt(packsNow);
-  $('#s-packs-max').textContent = packsMax ? ' / ' + fmt(packsMax) : '';
-  $('#s-level').textContent = fmt(r.level);
-  const prog = (r.xp_progress != null) ? r.xp_progress : 0;
-  $('#s-xpbar').style.width = Math.round(prog*100) + '%';
-  $('#s-xp').textContent = r.xp_to_next ? fmt(r.xp_to_next) + ' xp -> next level' : '';
-  $('#s-streak').textContent = '🔥 ' + fmt(r.streak);
-  if(r.listings_active != null) $('#s-streak-note').textContent = r.listings_active + ' active listing(s)';
-  regenAt = r.next_regen_at || null;
-  tickRegen();
-}
-
-function tickRegen(){
-  const el = $('#s-regen');
-  if(packsMax && packsNow >= packsMax){ el.innerHTML = 'full'; return; }
-  if(!regenAt){ el.textContent = ''; return; }
-  let ms = regenAt - Date.now();
-  if(ms <= 0){ el.innerHTML = 'regen imminent...'; return; }
-  const s = Math.floor(ms/1000), m = Math.floor(s/60);
-  const txt = m>0 ? `${m}m ${String(s%60).padStart(2,'0')}s` : `${s}s`;
-  el.innerHTML = 'next pack in <b>'+txt+'</b>';
-}
-setInterval(tickRegen, 1000);
-
-function renderSeries(list){
-  if(!list) return;
-  list = [...list].sort((a,b)=> (a.missing===0)-(b.missing===0) || (Number(a.pct)||0)-(Number(b.pct)||0));
-  const menu = list.filter(s=>s.series_id!=='mystery').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  const key = menu.map(s=>s.series_id+'|'+s.name).join(',');
-  // Only rebuild when the series change: rewriting options closes an open menu.
-  if(key !== seriesKey){
-    seriesKey = key; seriesMenu = menu;
-    const sel = $('#new-acct-series');
-    sel.innerHTML = seriesOptions(sel.value);
-  }
-  const done = list.filter(s=>s.missing===0).length;
-  const tot = list.reduce((a,s)=>a+(Number(s.total)||0),0), own = list.reduce((a,s)=>a+(Number(s.owned)||0),0);
-  const overall = tot ? (100*own/tot).toFixed(1) : 0;
-  $('#series-count').textContent = `${done}/${list.length} complete . ${fmt(own)}/${fmt(tot)} (${overall}%)`;
-  const container = $('#series');
-  container.innerHTML = '';
-  list.forEach(s=>{
-    const acc = isValidColor(s.primary_color) ? s.primary_color : '#8b6914';
-    const acc2 = isValidColor(s.accent_color) ? s.accent_color : '#d4a843';
-    const div = document.createElement('div');
-    div.className = `srow ${s.missing===0?'done':''}`;
-    div.dataset.seriesId = s.series_id;
-    div.innerHTML = `<div class="stop">
-        <span class="sname">${esc(s.name)}</span>
-        <span class="smeta"><b>${Number(s.owned)||0}</b>/${Number(s.total)||0} . ${Number(s.pct)||0}%</span>
-      </div>
-      <div class="bar"><i style="width:${Number(s.pct)||0}%;--accent:${acc};--accent2:${acc2}"></i></div>
-      <div class="miss">${s.missing===0 ? 'Series complete OK' : `<b>${Number(s.missing)||0}</b> missing card(s) . ${fmt(s.pulls)} pulls`}</div>`;
-    container.appendChild(div);
-  });
-}
-
-function applyConfig(c){
-  if(!c) return;
-  $('#c-buy').checked = !!c.buy_packs_with_ink;
-  $('#c-recycle').checked = !!c.auto_recycle;
-  $('#c-mystery').checked = !!c.mystery_pack;
-  $('#c-mkt').checked = !!c.enabled;
-  $('#c-autostart').checked = !!c.autostart;
-  if(c.min_ink_reserve != null && document.activeElement !== $('#c-reserve'))
-    $('#c-reserve').value = c.min_ink_reserve;
-  document.querySelectorAll('#c-recmode button').forEach(b=>
-    b.classList.toggle('active', b.dataset.v === (c.recycle_mode||'surplus')));
-  document.querySelectorAll('#c-resmode button').forEach(b=>
-    b.classList.toggle('active', b.dataset.v === (c.recycle_reserve_mode||'fixed')));
-  document.querySelectorAll('#c-recprio button').forEach(b=>
-    b.classList.toggle('active', b.dataset.v === (c.recycle_priority||'common_first')));
-  $('#c-fulfill').checked = !!c.fulfill_others;
-  if(c.max_listings != null && document.activeElement !== $('#c-maxlist'))
-    $('#c-maxlist').value = c.max_listings;
-  if(c.near_completion_max_missing != null && document.activeElement !== $('#c-near'))
-    $('#c-near').value = c.near_completion_max_missing;
-}
-async function postConfig(patch){
-  try{
-    const r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(patch)});
-    const d = await r.json(); applyConfig(d.config); toast('Setting saved');
-  }catch(e){ toast('Failed to save'); }
-}
-$('#c-buy').onchange = e => postConfig({buy_packs_with_ink: e.target.checked});
-$('#c-recycle').onchange = e => postConfig({auto_recycle: e.target.checked});
-$('#c-mystery').onchange = e => postConfig({mystery_pack: e.target.checked});
-$('#c-autostart').onchange = e => postConfig({autostart: e.target.checked});
-$('#c-reserve').onchange = e => postConfig({min_ink_reserve: Number(e.target.value)||0});
-document.querySelectorAll('#c-recmode button').forEach(b=>
-  b.onclick = ()=> postConfig({recycle_mode: b.dataset.v}));
-document.querySelectorAll('#c-resmode button').forEach(b=>
-  b.onclick = ()=> postConfig({recycle_reserve_mode: b.dataset.v}));
-document.querySelectorAll('#c-recprio button').forEach(b=>
-  b.onclick = ()=> postConfig({recycle_priority: b.dataset.v}));
-$('#c-reset').onclick = async ()=>{
-  try{ const d = await (await fetch('/api/config/reset',{method:'POST'})).json();
-    applyConfig(d.config); toast('Settings reset to defaults'); }
-  catch(e){ toast('Reset failed'); }
-};
-
-function applyLogging(lg){
-  if(!lg) return;
-  document.querySelectorAll('#c-loglevel button').forEach(b=>
-    b.classList.toggle('active', b.dataset.v === (lg.level||'INFO')));
-  $('#c-logreq').checked = !!lg.log_requests;
-}
-async function postLogging(patch){
-  try{ const d = await (await fetch('/api/logging',{method:'POST',headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(patch)})).json(); applyLogging(d.logging); toast('Logs: level applied'); }
-  catch(e){ toast('Failed to set logs'); }
-}
-document.querySelectorAll('#c-loglevel button').forEach(b=> b.onclick = ()=> postLogging({level: b.dataset.v}));
-$('#c-logreq').onchange = e => postLogging({log_requests: e.target.checked});
-$('#c-mkt').onchange = async e =>{
-  if(e.target.checked && !confirm('Enable auto-listings? This publishes real listings that commit your cards to other players.')){
-    e.target.checked = false; return; }
-  await postConfig({enabled: e.target.checked}); loadMarket();
-};
-$('#c-fulfill').onchange = async e =>{
-  if(e.target.checked && !confirm("Fulfill other players' offers? Each trade GIVES one of your cards (irreversible).")){
-    e.target.checked = false; return; }
-  await postConfig({fulfill_others: e.target.checked});
-};
-$('#c-maxlist').onchange = e => postConfig({max_listings: Number(e.target.value)||5});
-$('#c-near').onchange = e => postConfig({near_completion_max_missing: Math.max(0, Number(e.target.value)||0)});
-
-function setToken(t){
-  const dot = $('#sess-dot'), txt = $('#sess-txt');
-  if(!t || !t.present){ dot.className='dot err'; txt.textContent='session X'; return; }
-  if(t.expired){ dot.className='dot err'; txt.textContent='session expired'; return; }
-  if(t.expires_in != null){
-    const d = t.expires_in/86400;
-    dot.className = 'dot ' + (d < 2 ? 'wait' : 'on');
-    txt.textContent = d >= 1 ? `session: ${Math.floor(d)}d` : `session: ${Math.floor(t.expires_in/3600)}h`;
-  } else { dot.className='dot on'; txt.textContent='session'; }
-}
-
-function openCookieModal(accountId, accountName){
-  $('#modal').innerHTML = `<button class="close" onclick="closeModal()">X</button>
-    <h3>Session - ${esc(accountName)}</h3>
-    <div class="sub2">wikitcg exposes no refresh endpoint: when the token nears expiry, log back
-      in from the browser, copy the <code>wtcg_session</code> cookie
-      (DevTools -> Application -> Cookies) and paste it here. Immediate effect, no restart.</div>
-    <textarea class="ta" id="ck-session" placeholder="wtcg_session (JWT eyJ...)"></textarea>
-    <textarea class="ta" id="ck-extra" placeholder="optional extra cookies - e.g. cf_clearance=...; other=..."></textarea>
-    <button id="ck-save">Save &amp; apply</button>`;
-  $('#ck-save').addEventListener('click', () => saveCookie(accountId));
-  $('#overlay').classList.add('show');
-}
-
-async function saveCookie(accountId){
-  const session = $('#ck-session').value.trim(), extra = $('#ck-extra').value.trim();
-  if(!session){ toast('Paste a wtcg_session cookie'); return; }
-  try{
-    const r = await fetch('/api/accounts/'+encodeURIComponent(accountId)+'/cookie',{method:'POST',headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({session_cookie:session, extra_cookies:extra})});
-    const d = await r.json();
-    if(d.ok){ toast('Session updated'); closeModal(); loadAccounts(); }
-    else toast(d.error || 'Cookie rejected');
-  }catch(e){ toast('Update failed'); }
-}
-
-function seriesOptions(selected){
-  const menu = !selected || seriesMenu.some(s=>s.series_id===selected)
-    ? seriesMenu : [...seriesMenu, {series_id:selected, name:selected}];
-  return '<option value="">auto</option>' + menu.map(s=>
-    `<option value="${esc(s.series_id)}"${s.series_id===selected?' selected':''}>${esc(s.name)}</option>`).join('');
-}
-
-function openEditModal(id){
-  const a = accounts.find(x => x.id === id);
-  if(!a) return;
-  const lab = 'style="color:var(--txt-dim);font-size:12px;width:52px"';
-  $('#modal').innerHTML = `<button class="close" onclick="closeModal()">X</button>
-    <h3>Edit - ${esc(a.name)}</h3>
-    <div class="sub2">Auto: incomplete series first, then keep opening the best-paying one.</div>
-    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
-      <span class="num"><span ${lab}>Name</span><input type="text" id="ed-name" style="width:220px"></span>
-      <span class="num"><span ${lab}>Series</span><select id="ed-series" style="width:220px">${seriesOptions(a.series)}</select></span>
-    </div>
-    <button id="ed-save">Save</button>`;
-  $('#ed-name').value = a.name;
-  $('#ed-save').addEventListener('click', () => saveAccount(id));
-  $('#overlay').classList.add('show');
-}
-
-async function saveAccount(id){
-  try{
-    const r = await fetch('/api/accounts/'+encodeURIComponent(id), {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name: $('#ed-name').value.trim(), series: $('#ed-series').value})});
-    const d = await r.json();
-    if(d.ok){ toast('Account updated'); closeModal(); loadAccounts(); }
-    else toast(d.error || 'Update failed');
-  }catch(e){ toast('Update failed'); }
-}
-
-$('#sess-pill').onclick = ()=>{ if(currentAccountId) openCookieModal(currentAccountId, window._currentAccountName || 'Account'); };
-
-function renderSpark(history){
-  const svg = $('#spark');
-  const pts = (history||[]).filter(h=>h.ink!=null);
-  if(pts.length < 2){ svg.innerHTML=''; $('#ink-trend').textContent='Not enough data yet.'; return; }
-  const xs = pts.map((_,i)=>i), inks = pts.map(p=>p.ink);
-  const min = Math.min(...inks), max = Math.max(...inks), span = (max-min)||1;
-  const W=320,H=90,pad=6;
-  const x = i => pad + i*(W-2*pad)/(xs.length-1);
-  const y = v => H-pad - (v-min)*(H-2*pad)/span;
-  const line = pts.map((p,i)=>`${x(i).toFixed(1)},${y(p.ink).toFixed(1)}`).join(' ');
-  const area = `${x(0)},${H-pad} ` + line + ` ${x(pts.length-1)},${H-pad}`;
-  svg.innerHTML =
-    `<polygon points="${area}" fill="rgba(111,179,201,.12)"/>` +
-    `<polyline points="${line}" fill="none" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
-  const first = inks[0], last = inks[inks.length-1], delta = last-first;
-  $('#ink-trend').innerHTML = `${fmt(last)} now . ${delta>=0?'+':''}${fmt(delta)} over the period . max ${fmt(max)}`;
-}
-
-function renderPulls(pc){
-  pc = pc||[];
-  const byR = {}; let total=0, nw=0;
-  pc.forEach(p=>{ byR[p.rarity]=p; total+=p.count; nw+=(p.new||0); });
-  $('#pull-sub').textContent = total ? `${fmt(total)} pulls . ${fmt(nw)} new` : 'No pulls yet.';
-  const maxc = Math.max(1, ...pc.map(p=>p.count));
-  $('#pull-bars').innerHTML = RARITIES.filter(r=>byR[r]).map(r=>{
-    const c = byR[r].count, pctW = Math.round(100*c/maxc);
-    return `<div class="rrow"><span class="rk" style="color:${rcol(r)}">${r}</span>
-      <span class="rt"><i style="width:${pctW}%;background:${rcol(r)}"></i></span>
-      <span class="rv">${fmt(c)} . ${(100*c/total).toFixed(1)}%</span></div>`;
-  }).join('') || '<div class="csub">-</div>';
-}
-
-function renderRecycle(rec, fails){
-  rec = rec||{by_rarity:[]};
-  $('#rec-ink').textContent = fmt(Number(rec.total_ink)||0);
-  $('#rec-count').textContent = fmt(Number(rec.total_count)||0);
-  const byR = {}; (rec.by_rarity||[]).forEach(x=>byR[x.rarity]=x);
-  const maxi = Math.max(1, ...(rec.by_rarity||[]).map(x=>x.ink));
-  let html = RARITIES.filter(r=>byR[r]).map(r=>{
-    const ink = byR[r].ink, pctW = Math.round(100*ink/maxi);
-    return `<div class="rrow"><span class="rk" style="color:${rcol(r)}">${r}</span>
-      <span class="rt"><i style="width:${pctW}%;background:${rcol(r)}"></i></span>
-      <span class="rv">${fmt(ink)}</span></div>`;
-  }).join('');
-  if(fails && Number(fails.total)||0){
-    const left = fails.next_retry_at ? Math.max(0, Math.round(fails.next_retry_at - Date.now()/1000)) : null;
-    const when = left!=null ? (left<60?`${left}s`:`${Math.floor(left/60)} min`) : '';
-    html += `<div class="csub" style="margin-top:9px;color:var(--warn)">O ${fmt(Number(fails.total)||0)} non-recyclable card(s) (500 error, remembered)${when?` . retry ~${when}`:''}`;
-  }
-  $('#rec-bars').innerHTML = html;
-}
-
-async function loadStats(){
-  try{
-    const d = await (await fetch('/api/stats')).json();
-    renderSpark(d.history); renderPulls(d.pull_counts); renderRecycle(d.recycle, d.recycle_failures);
-  }catch(e){ console.error(e); }
-}
-
-async function openSeries(sid){
-  const ov = $('#overlay'), m = $('#modal');
-  m.innerHTML = '<div class="loading">Loading...</div>';
-  ov.classList.add('show');
-  try{
-    const d = await (await fetch('/api/series/'+encodeURIComponent(sid))).json();
-    const s = d.series || {};
-    let chips = '';
-    if(d.rarity && d.rarity.length){
-      chips = '<div class="chips">' + d.rarity.map(r=>{
-        const owned = Number(r.owned)||0, total = Number(r.total)||0;
-        const full = owned>=total ? 'full' : '';
-        return `<span class="chip ${full}"><span class="r" style="color:${rcol(r.rarity)}">${esc(r.rarity)}</span><b>${owned}</b>/${total}</span>`;
-      }).join('') + '</div>';
-    } else if(!d.catalog_loaded){
-      chips = '<div class="sub2">Catalog not loaded yet - run a sync.</div>';
-    }
-    let miss = '';
-    if(d.missing && d.missing.length){
-      miss = '<div class="misslist"><div class="sub2">'+d.missing.length+' missing card(s)</div>' +
-        d.missing.map(c=>`<div class="missrow"><span>${esc(c.title||c.card_id)}</span><span class="rr" style="color:${rcol(c.rarity)}">${esc(c.rarity||'')}</span></div>`).join('') +
-        '</div>';
-    } else if(d.catalog_loaded){
-      miss = '<div class="misslist"><div class="sub2">Series complete OK</div></div>';
-    }
-    m.innerHTML = `<button class="close" onclick="closeModal()">X</button>
-      <h3>${esc(s.name||sid)}</h3>
-      <div class="sub2">${Number(s.owned)||0}/${Number(s.total)||0} (${Number(s.pct)||0}%) . ${Number(d.duplicates)||0} duplicate(s) in reserve</div>
-      ${chips}${miss}`;
-  }catch(e){ m.innerHTML = '<div class="loading">Loading error.</div>'; }
-}
-function closeModal(){ $('#overlay').classList.remove('show'); }
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
-
-function addEntry(a){
-  if(feedEmpty){ $('#feed').innerHTML=''; feedEmpty=false; }
-  const t = new Date(a.ts || Date.now());
-  const hh = t.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  const inkDelta = Number(a.ink_delta)||0;
-  const ink = a.ink_delta ? ` <span class="ink-plus">${inkDelta>0?'+':''}${inkDelta}</span>` : '';
-  const div = document.createElement('div');
-  const validLevel = ['info','warn','error'].includes(a.level) ? a.level : 'info';
-  div.className = 'entry ' + validLevel;
-  div.innerHTML = `<time>${hh}<br><span class="tag">${esc(a.type||'')}</span></time>
-                   <div class="msg">${esc(a.message||'')}${ink}</div>`;
-  $('#feed').prepend(div);
-  while($('#feed').children.length > 120) $('#feed').lastChild.remove();
-}
-
-function mktRow(l, mine){
-  const st = l.status || '';
-  const stc = ['active','cancelled'].includes(st) ? (st==='active' ? 'var(--good)' : 'var(--err)') : 'var(--txt-dim)';
-  const rar = l.offered_rarity ? `<span class="mono" style="color:${rcol(l.offered_rarity)}">${esc(l.offered_rarity)}</span> ` : '';
-  const right = mine
-    ? `<span class="mkt-tag" style="color:${stc}">${esc(st)}</span>`
-    : `<span class="csub">${esc(l.lister_name||'')}</span>`;
-  return `<div class="mkt-row">
-    <span class="mono" title="I offer">${rar}${esc(l.offered_card_type||'')}</span>
-    <span class="mkt-arrow">-></span>
-    <span class="mono" title="I want">${esc(l.wanted_card_id||'')}</span>
-    ${right}</div>`;
-}
-async function loadMarket(){
-  const st = $('#mkt-status'); st.textContent = 'loading...';
-  try{
-    const d = await (await fetch('/api/marketplace')).json();
-    if(d.error){ st.innerHTML = `<span style="color:var(--warn)">unavailable: ${esc(d.error)}</span>`; }
-    else st.textContent = `${d.enabled?'auto on':'auto off'} . ${Number(d.active_mine)||0}/${Number(d.max_listings)||5} active . market: ${(d.market||[]).length}`;
-    $('#mkt-mine').innerHTML = (d.mine&&d.mine.length) ? d.mine.map(l=>mktRow(l,true)).join('') : '<div class="csub">No listings.</div>';
-    $('#mkt-market').innerHTML = (d.market&&d.market.length) ? d.market.map(l=>mktRow(l,false)).join('') : '<div class="csub">Market empty.</div>';
-  }catch(e){ st.textContent = 'loading error'; }
-}
-$('#mkt-refresh').onclick = loadMarket;
-
-async function loadAccounts(){
-  try{
-    const d = await (await fetch('/api/accounts')).json();
-    const accts = accounts = d.accounts || [];
-    currentAccountId = d.current;
-
-    const container = $('#accounts-container');
-    const list = $('#accounts-list');
-    const empty = $('#accounts-empty');
-
-    if(accts.length === 0){
-      container.style.display = 'none';
-      empty.style.display = 'block';
-    } else {
-      container.style.display = 'block';
-      empty.style.display = 'none';
-
-      const html = accts.map(a => {
-        const isCurrent = a.id === currentAccountId;
-        const sessionStr = !a.token || !a.token.present ? 'missing' : (a.token.expired ? 'expired' : (a.token.expires_in ? (a.token.expires_in < 86400 ? '< 1d' : Math.floor(a.token.expires_in/86400) + 'd') : '8'));
-        return `<tr style="border-bottom:1px solid var(--line);${isCurrent?'background:rgba(212,168,67,.05);':''}" data-acct-id="${esc(a.id)}">
-          <td style="padding:10px 8px">${esc(a.name)}</td>
-          <td style="padding:10px 8px">${a.series ? esc(a.series) : 'auto'}</td>
-          <td style="padding:10px 8px">${esc(a.status || '—')}</td>
-          <td style="padding:10px 8px;text-align:right">${fmt(Number(a.level)||0)}</td>
-          <td style="padding:10px 8px;text-align:right">${fmt(Number(a.ink)||0)}</td>
-          <td style="padding:10px 8px;text-align:right">${fmt(Number(a.packs)||0)}</td>
-          <td style="padding:10px 8px;text-align:right">${fmt(Number(a.opened)||0)}</td>
-          <td style="padding:10px 8px;text-align:right">${fmt(Number(a.recycled)||0)}</td>
-          <td style="padding:10px 8px">${sessionStr}</td>
-          <td style="padding:10px 8px">
-            ${!isCurrent ? `<button class="ghost" style="font-size:11px;padding:5px 8px" data-action="activate" data-id="${esc(a.id)}">Activate</button> ` : ''}
-            <button class="ghost" style="font-size:11px;padding:5px 8px" data-action="cookie" data-id="${esc(a.id)}">Cookie</button>
-            <button class="ghost" style="font-size:11px;padding:5px 8px" data-action="edit" data-id="${esc(a.id)}">Edit</button>
-            <button class="ghost" style="font-size:11px;padding:5px 8px" data-action="delete" data-id="${esc(a.id)}">Delete</button>
-          </td>
-        </tr>`;
-      }).join('');
-      // Re-rendering on every poll can swallow a click landing mid-refresh.
-      if(html !== accountsHtml) list.innerHTML = accountsHtml = html;
-    }
-
-    if(currentAccountId){
-      const current = accts.find(a => a.id === currentAccountId);
-      if(current){
-        $('#current-account').textContent = esc(current.name);
-        window._currentAccountName = current.name;
-        window._token = current.token;
-        setToken(current.token);
-      }
-    }
-
-    $('#btn-next').style.display = accts.length > 1 ? '' : 'none';
-
-    if(!d.vault.available){
-      $('#vault-warn').style.display = 'block';
-      $('#vault-warn').textContent = 'O No secure OS keyring found - set WIKITCG_SESSION_<ACCOUNT_ID> environment variables.';
-    } else {
-      $('#vault-warn').style.display = 'none';
-    }
-  }catch(e){
-    console.error('loadAccounts error:', e);
-  }
-}
-
-function handleAccountAction(action, id){
-  if(action === 'activate'){
-    fetch('/api/accounts/'+encodeURIComponent(id)+'/activate', {method:'POST'}).then(() => loadAccounts()).catch(e => toast('Activate failed'));
-  } else if(action === 'cookie'){
-    const row = document.querySelector(`[data-acct-id="${id}"]`);
-    if(row) {
-      const nameCell = row.cells[0];
-      const name = nameCell.textContent;
-      openCookieModal(id, name);
-    }
-  } else if(action === 'edit'){
-    openEditModal(id);
-  } else if(action === 'delete'){
-    if(!confirm('Delete this account?')) return;
-    fetch('/api/accounts/'+encodeURIComponent(id), {method:'DELETE'})
-      .then(r => r.json()).then(d => {
-        if(d.ok){ toast('Account deleted'); loadAccounts(); }
-        else { toast(d.error || 'Delete failed'); }
-      }).catch(e => toast('Delete failed'));
-  }
-}
-
-document.addEventListener('click', e => {
-  if(e.target.dataset.action === 'cookie-current'){
-    e.preventDefault();
-    if(currentAccountId) openCookieModal(currentAccountId, window._currentAccountName || 'Account');
-  }
-
-  const btn = e.target.closest('[data-action]');
-  if(btn){
-    const action = btn.dataset.action;
-    const id = btn.dataset.id;
-    handleAccountAction(action, id);
-  }
-
-  const seriesRow = e.target.closest('.srow');
-  if(seriesRow){
-    const seriesId = seriesRow.dataset.seriesId;
-    if(seriesId) openSeries(seriesId);
-  }
-});
-
-$('#new-acct-btn').onclick = async () => {
-  const name = $('#new-acct-name').value.trim();
-  const series = $('#new-acct-series').value || null;
-  const errDiv = $('#acct-error');
-
-  if(!name){ toast('Enter an account name'); return; }
-
-  try{
-    const r = await fetch('/api/accounts', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name, series})});
-    const d = await r.json();
-    if(d.ok){
-      $('#new-acct-name').value = '';
-      $('#new-acct-series').value = '';
-      errDiv.style.display = 'none';
-      toast('Account added');
-      loadAccounts();
-    } else {
-      errDiv.textContent = d.error || 'Failed to add account';
-      errDiv.style.display = 'block';
-    }
-  }catch(e){
-    errDiv.textContent = 'Error adding account';
-    errDiv.style.display = 'block';
-  }
-};
-
-try{
-  const advOpen = localStorage.getItem('adv-open') === 'true';
-  if(advOpen) $('#adv-panel').hidden = false;
-} catch(e){}
-
-$('#btn-adv-toggle').onclick = () => {
-  const panel = $('#adv-panel');
-  const open = panel.hidden;
-  panel.hidden = !open;
-  try{ localStorage.setItem('adv-open', !open); } catch(e){}
-};
-
-function applyLive(d){
-  if(!d) return;
-  setStatus(d.status); setResources(d.resources); renderSeries(d.series); applyConfig(d.config);
-  applyLogging(d.logging);
-  const ov = d.config_overridden || [];
-  const lbl = $('#cfg-label');
-  if(lbl){
-    lbl.textContent = ov.length ? `Settings (${ov.length} via UI)` : 'Settings';
-    lbl.title = ov.length ? 'Changed in the dashboard: ' + ov.join(', ') : 'Default values';
-  }
-  if(d.account){
-    window._currentAccountName = d.account.name;
-    $('#current-account').textContent = esc(d.account.name);
-  }
-  if(d.token){
-    window._token = d.token;
-    setToken(d.token);
-  }
-  updateBanner(d);
-}
-
-function updateBanner(d){
-  const link = currentAccountId ? `<a href="#" data-action="cookie-current" style="color:var(--gold)">update the cookie</a>` : 'update the cookie';
-  const msgs = [];
-  if(d.token && d.token.expired) msgs.push(`<b>Session expired</b> - ${link} (wikitcg has no refresh: log back in then paste the cookie).`);
-  else if(!d.has_session) msgs.push(`<b>Cookie missing</b> - set <code>api.session_cookie</code> or ${link}.`);
-  else if(d.token && d.token.expires_in != null && d.token.expires_in < 2*86400)
-    msgs.push(`<b>Session expiring soon</b> (~${Math.floor(d.token.expires_in/3600)} h) - remember to renew it (${link}).`);
-  if(d.auth_error) msgs.push(`<b>Authentication rejected</b>: ${esc(d.auth_error)} - ${link}.`);
-  if(msgs.length){ $('#banner').innerHTML = msgs.join('<br>'); $('#banner').classList.add('show'); }
-  else $('#banner').classList.remove('show');
-}
-
-async function loadState(){
-  try{
-    const d = await (await fetch('/api/state')).json();
-    applyLive(d);
-    (d.actions||[]).slice().reverse().forEach(addEntry);
-  }catch(e){ console.error(e); }
-  loadStats();
-}
-
-async function refreshLive(){
-  try{ applyLive(await (await fetch('/api/live')).json()); }
-  catch(e){}
-}
-
-let statsTimer = null;
-function scheduleStats(){ clearTimeout(statsTimer); statsTimer = setTimeout(loadStats, 1500); }
-
-function connectWS(){
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onopen  = ()=>{ $('#ws-dot').className='dot on'; $('#ws-txt').textContent='live'; };
-  ws.onclose = ()=>{ $('#ws-dot').className='dot off'; $('#ws-txt').textContent='offline'; setTimeout(connectWS, 2500); };
-  ws.onmessage = ev=>{
-    const m = JSON.parse(ev.data);
-    if(m.kind==='status') setStatus(m.status);
-    else if(m.kind==='resources'){ setResources(m); }
-    else if(m.kind==='progress') renderSeries(m.series);
-    else if(m.kind==='config') applyConfig(m);
-    else if(m.kind==='logging') applyLogging(m);
-    else if(m.kind==='token'){ window._token = m; setToken(m); }
-    else if(m.kind==='action'){ addEntry(m); if(['open','recycle','buy','mystery'].includes(m.type)) scheduleStats(); }
-    else if(m.kind==='account'){ loadAccounts(); }
-  };
-}
-
-$('#btn-start').onclick = ()=> fetch('/api/control/start',{method:'POST'});
-$('#btn-stop').onclick  = ()=> fetch('/api/control/stop',{method:'POST'});
-$('#btn-next').onclick  = ()=> fetch('/api/control/next',{method:'POST'});
-$('#btn-sync').onclick  = ()=> fetch('/api/control/sync',{method:'POST'});
-
-loadState(); loadAccounts(); connectWS(); loadMarket();
-setInterval(refreshLive, 5000);
-setInterval(loadStats, 20000);
-setInterval(loadAccounts, 5000);
-</script>
+<script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>

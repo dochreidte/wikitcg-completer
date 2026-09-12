@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import strategy, vault
 from .api_client import AuthError
@@ -20,7 +21,8 @@ from .farm import Farm
 from .logging_conf import setup_logging
 from .netguard import install, request_allowed
 
-FRONTEND = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+FRONTEND = FRONTEND_DIR / "index.html"
 
 EDITABLE: dict[str, tuple[str, type]] = {
     "buy_packs_with_ink": ("engine", bool),
@@ -125,6 +127,7 @@ def _bind_host() -> str | None:
 
 app = FastAPI(title="wikitcg-completer", lifespan=lifespan)
 install(app, _bind_host)
+app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
 
 @app.get("/", response_class=HTMLResponse)
